@@ -147,9 +147,24 @@ end
 
 # Random.seed!(3) # for reproducibility in Debug
 
+sum_scores = 0.0
+best_score = 0.0
+num_scores = 0.0
+num_valid_scores = 0.0
+
 while true
+    global sum_scores, num_scores, num_valid_scores, best_score
     my_solution = generate_greedy_solution()
     length = calculate_solution_length(my_solution)
     println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score
-    evaluate_solution(my_solution)
+    score = evaluate_solution(my_solution)
+    
+    num_scores += 1
+    if score > 0 # could use > 5 to remove solutions where the Ray immediately hits a wrong mirror and then a wall
+        best_score = max(best_score, score)
+        sum_scores += score
+        num_valid_scores += 1
+    end
+    
+    println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
 end

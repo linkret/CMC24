@@ -594,7 +594,7 @@ function evaluate_solution(cmc24_solution)
     # load the solution
     lamp, mirrors = load_solution(cmc24_solution, mirror_length)
     if !check_solution(temple, lamp, mirrors)
-        return
+        return 0
     end
     
     # compute the ray path
@@ -617,6 +617,8 @@ function evaluate_solution(cmc24_solution)
         # create the presentation plot
         cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
+
+    return score_percent
 end
 
 temple = load_temple(temple_string, block_size)
