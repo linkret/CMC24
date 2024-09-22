@@ -7,6 +7,7 @@ using ImageIO
 using Measures
 using Plots; gr()
 using UUIDs
+using DelimitedFiles
 
 temple_string =
 #1  2  3  4  5  6  7  8  9  0  1  2  3  4  5  6  7  8  9  0
@@ -120,11 +121,13 @@ function load_solution(cmc24_solution, mirror_length)
     if size(cmc24_solution) ≠ (9, 3)
         println(stderr, "ERROR! The solution isn't 9x3 size matrix.")
         finalize()
+        return ()
     end
 
     if !(eltype(cmc24_solution) <: Number)
         println(stderr, "ERROR! The solution contains non-numerical inputs.")
         finalize()
+        return ()
     end
 
     try
@@ -132,6 +135,7 @@ function load_solution(cmc24_solution, mirror_length)
     catch
         println(stderr, "ERROR! The solution can't be converted to double precision floating point format.")
         finalize()
+        return ()
     end
 
     # preprocess the lamp
@@ -163,7 +167,7 @@ function load_solution(cmc24_solution, mirror_length)
         push!(mirrors, mirror)
     end
 
-    println(stderr, "The solution is loaded.")
+    # println(stderr, "The solution is loaded.")
 
     return (lamp, mirrors)
 end
@@ -306,23 +310,27 @@ function check_solution(temple, lamp, mirrors)
     if !all([0, 0] .≤ lamp.v .≤ temple.size)
         println(stderr, "ERROR! The lamp isn't placed within temple limits which is of size $(temple.size).")
         finalize(temple, lamp, mirrors)
+        return false
     end
 
     # check mirrors' ends are within the temple
     if !all(all([0, 0] .≤ mirror.v1 .≤ temple.size) for mirror ∈ mirrors)
         println(stderr, "ERROR! Some mirror isn't placed within temple of size $(temple.size).")
         finalize(temple, lamp, mirrors)
+        return false
     end
 
     if !all(all([0, 0] .≤ mirror.v2 .≤ temple.size) for mirror ∈ mirrors)
         println(stderr, "ERROR! Some mirror isn't placed within temple of size $(temple.size).")
         finalize(temple, lamp, mirrors)
+        return false
     end
     
     # check the lamp isn't in some building block
     if point_in_block(temple, lamp.v)
         println(stderr, "ERROR! Lamp is placed in a building block.")
         finalize(temple, lamp, mirrors)
+        return false
     end
     
     # check some mirror end isn't in some building block
@@ -330,6 +338,7 @@ function check_solution(temple, lamp, mirrors)
         if point_in_block(temple, mirror.v1) || point_in_block(temple, mirror.v2)
             println(stderr, "ERROR! Mirror $m has one of its ends inside a building block.")
             finalize(temple, lamp, mirrors)
+            return false
         end
     end
 
@@ -338,6 +347,7 @@ function check_solution(temple, lamp, mirrors)
         if temple_segment_intersection(temple, mirror.s)
             println(stderr, "ERROR! Mirror $m intersects with a building block.")
             finalize(temple, lamp, mirrors)
+            return false
         end
     end
     
@@ -346,10 +356,13 @@ function check_solution(temple, lamp, mirrors)
         if segment_segment_intersection(mirror1.s, mirror2.s)
             println(stderr, "ERROR! Mirrors $m1 & $m2 intersect.")
             finalize(temple, lamp, mirrors)
+            return false
         end
     end
     
-    println(stderr, "The solution geometry is correct.")
+    # println(stderr, "The solution geometry is correct.")
+
+    return true
 end
 
 function raytrace(temple, lamp, mirrors)
@@ -533,47 +546,84 @@ function evaluate(temple, path)
     
     # count the number of pixels changed due to the light ray
     score = sum(p1 ≠ p2 for (p1, p2) ∈ zip(img1, img2))
+
+    # delete files fplot1 and fplot2
+    rm(fplot1)
+    rm(fplot2)
     
     return total, vacant, score
 end
 
 function finalize(temple=nothing, lamp=nothing, mirrors=nothing, path=nothing)
     if temple ≠ nothing
-        cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+        # Can uncomment if we want to inspect the image of the invalid solution
+        # cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
     
-    print(0)  # stdout print of a fallback result in a case of early exit
+    println(0)  # stdout print of a fallback result in a case of early exit
 
+    # exit() # uncomment if we want to stop the script execution
+    return
+end
+
+test_solution = [
+    15.281232291465962	18.90116605616258	-1.417934992207285;
+    17.648869096300675	2.04664655175534	0.5913027966321329;
+    7.533730597375915	8.13219225471247	1.5271630954950384;
+    17.74778255182625	13.622898491803245	5.480333851262195;
+    12.773033517329425	3.502138054203397	3.7175513067479216;
+    2.028179308407874	2.825416087146001	5.45415391248228;
+    4.390683595385444	17.67861423253208	0.5759586531581288;
+    16.838707374578526	14.784922261367987	4.721115626644661;
+    4.022889393946994	11.110045590697135	5.262167694762903;
+]
+
+function load_solution_file(filename::String)
+    lines = readlines(filename)
+
+    # Extract the float
+    score = parse(Float64, lines[1])
+
+    # Extract the matrix
+    matrix_data = readdlm(IOBuffer(join(lines[2:end], "\n")), Float64)
+
+    return score, matrix_data
+end
+
+function evaluate_solution(cmc24_solution)
+    # load the solution
+    lamp, mirrors = load_solution(cmc24_solution, mirror_length)
+    if !check_solution(temple, lamp, mirrors)
+        return
+    end
+    
+    # compute the ray path
+    path = raytrace(temple, lamp, mirrors)
+    
+    # evaluate the solution
+    total, vacant, score = evaluate(temple, path)
+    # println(stderr, "Base plot has $(commas(vacant)) vacant of total $(commas(total)) pixels.")
+    score_percent = 100. * score / vacant
+    println(stderr, "Your CMC24 score is $(commas(score)) / $(commas(vacant)) = $(100. * score / vacant) %.")
+    
+    best_score, best_matrix = load_solution_file("best.txt")
+    if score_percent > best_score
+        println(stderr, "Congratulations! You have a new best score.")
+        open("best.txt", "w") do io
+            println(io, score_percent)
+            writedlm(io, cmc24_solution)
+        end
+        
+        # create the presentation plot
+        cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+    end
+end
+
+temple = load_temple(temple_string, block_size)
+if isempty(temple)
+    println(stderr, "ERROR! The temple couldn't be loaded.")
+    finalize()
     exit()
 end
 
-cmc24_solution = [
-    5 5 0.26;
-    11.5 6.5 0.9;
-    11.9 16.5 0.95;
-    15.2 17.6 2.45;
-    13.8 12.0 0.92;
-    1.6 6.2 2.53;
-    2.2 14.7 0.7;
-    8.5 14.2 2.325;
-    8.7 3.05 2.525;
-]
-
-# load the temple
-temple = load_temple(temple_string, block_size)
-
-# load the solution
-lamp, mirrors = load_solution(cmc24_solution, mirror_length)
-check_solution(temple, lamp, mirrors)
-
-# compute the ray path
-path = raytrace(temple, lamp, mirrors)
-
-# evaluate the solution
-total, vacant, score = evaluate(temple, path)
-println(stderr, "Base plot has $(commas(vacant)) vacant of total $(commas(total)) pixels.")
-println(stderr, "Your CMC24 score is $(commas(score)) / $(commas(vacant)) = $(100. * score / vacant) %.")
-print(score)
-
-# create the presentation plot
-cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+# evaluate_solution(test_solution)
