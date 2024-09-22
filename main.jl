@@ -1,6 +1,8 @@
-include("cmc24.jl")
-
+# import LinearAlgebra : norm # doesnt work for some reason, so we have to use the whole module ???
+using LinearAlgebra
 using Random
+
+include("cmc24.jl")
 
 MIRRORS = 8
 PULL_OUT_L = 0.1
@@ -36,7 +38,7 @@ function generate_segment()
     return ((collision_point, -e), dist + rev_dist, rev_collision_point)
 end
 
-function generate_long_segment(iter_cnt::Int = 100)
+function generate_long_segment(iter_cnt::Int = 200)
     ray, length, endpoint = generate_segment()
     for i in 1:iter_cnt
         new_ray, new_length, new_endpoint = generate_segment()
@@ -50,14 +52,14 @@ function generate_long_segment(iter_cnt::Int = 100)
 end
 
 """
-    longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.5)
+    longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.15)
 
     Returns ((v, e), length, endpoint) where v is the starting point, e is the direction, length is the length of the ray, and endpoint is the point of collision.
     The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
     The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
-    Default banned_angle_range is around 30 degrees (0.5 rad).
+    Default banned_angle_range is around 10 degrees (0.15 rad).
 """
-function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.5)
+function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.15)
     if length(v) != 2
         throw(ArgumentError("Input vector v must have length 2"))
     end
@@ -66,7 +68,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 
     max_ray = ([0, 0], [0, 0])
     max_endpoint = [0, 0]
 
-    # radians from 0 to 2π, steps of 1 degree
+    # radians from 0 to 2π, steps of 1 
     for e in 0:359
         a = deg2rad(e)
         
@@ -120,21 +122,34 @@ function generate_greedy_solution()
 
         angle_between_rays = atan(direction2[2], direction2[1]) - atan(direction1[2], direction1[1])
         mirror_angle = atan(direction1[2], direction1[1]) + angle_between_rays / 2
-        mirror = place_mirror(end_point, mirror_angle)
-
+        
         if mirror_angle < 0
             mirror_angle += 2π
         end
-
+        
+        mirror = place_mirror(end_point, mirror_angle)
         my_solution = vcat(my_solution, [mirror[1] mirror[2] mirror_angle])
     end
 
     return my_solution
 end
 
+function calculate_solution_length(solution)
+    sum = 0
+    for i in 1:MIRRORS
+        cur_point = solution[i, 1:2]
+        nxt_point = solution[i + 1, 1:2]
+        dist = norm(nxt_point - cur_point)
+        sum += dist
+    end
+    return sum
+end
+
 # Random.seed!(3) # for reproducibility in Debug
 
 while true
     my_solution = generate_greedy_solution()
+    length = calculate_solution_length(my_solution)
+    println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score
     evaluate_solution(my_solution)
 end
