@@ -52,14 +52,15 @@ function generate_long_segment(iter_cnt::Int = 200)
 end
 
 """
-    longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.20)
+    longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.20)
 
     Returns ((v, e), length, endpoint) where v is the starting point, e is the direction, length is the length of the ray, and endpoint is the point of collision.
     The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
+    The arguemnt rays is used to avoid generating rays that are too close to the previous rays.
     The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
     Default banned_angle_range is around 15 degrees (0.20 rad).
 """
-function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.2)
+function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.2)
     if length(v) != 2
         throw(ArgumentError("Input vector v must have length 2"))
     end
@@ -79,11 +80,24 @@ function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 
         end
         
         ray = (v, [cos(a), sin(a)])
+
+        intersections = 0
+        for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
+            r = ray_ray_intersection(ray, ray2) # could try segment_segment_intersection, might be faster, who cares
+            if r != (4, 0, 0) && r != (2, 0, 0) # 2 and 4 mean no intersection
+                x, y = r[2], r[3]
+                if x >= 0 && x <= 20 && y >= 0 && y <= 20 && !point_in_block(temple, [x, y])
+                    intersections += 1
+                end
+            end
+        end
+
         dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
         collision_point = ray[1] + ray[2] * dist
 
-        if dist > max_length
-            max_length = dist
+        score = dist - intersections * 2.0 # penalty -2.0 for every intersection
+        if score > max_length
+            max_length = score
             max_ray = (v, ray[2])
             max_endpoint = collision_point
         end
@@ -105,7 +119,7 @@ function generate_greedy_solution()
     for i in 1:MIRRORS
         # calculate angle from endpoint to the starting point of the previous ray
         banned_angle = atan(ray[1][2] - endpoint[2], ray[1][1] - endpoint[1])
-        ray, len, endpoint = longest_segment_from_point(endpoint, banned_angle)
+        ray, len, endpoint = longest_segment_from_point(endpoint, rays, banned_angle)
         push!(rays, ray)
     end
 
