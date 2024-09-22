@@ -52,14 +52,14 @@ function generate_long_segment(iter_cnt::Int = 200)
 end
 
 """
-    longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.15)
+    longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.20)
 
     Returns ((v, e), length, endpoint) where v is the starting point, e is the direction, length is the length of the ray, and endpoint is the point of collision.
     The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
     The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
-    Default banned_angle_range is around 10 degrees (0.15 rad).
+    Default banned_angle_range is around 15 degrees (0.20 rad).
 """
-function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.15)
+function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.2)
     if length(v) != 2
         throw(ArgumentError("Input vector v must have length 2"))
     end
