@@ -1,0 +1,140 @@
+include("cmc24.jl")
+
+using Random
+
+MIRRORS = 8
+PULL_OUT_L = 0.1
+PULL_OUT_M = 1.2 # probably too extreme, need to implement this in another way
+
+"""
+    generate_segment()
+
+    Returns ((v, e), length) where v is the starting point, e is the direction, and length is the length of the ray.
+"""
+function generate_segment()
+    v = [0, 0]
+    while point_in_block(temple, v)
+        x = rand() * 19.0 + 1
+        y = rand() * 19.0 + 1
+        v = [x, y]
+    end
+    
+    # Randomly select an initial angle as e = [cos(α), sin(α)]
+    angle = rand() * 360.0 * π / 180
+    e = [cos(angle), sin(angle)]
+    
+    ray = (v, e)
+    
+    # this method call is a bit slow
+    dist = temple_ray_intersection(temple, ray) - PULL_OUT_L # subtract to avoid colliding Lamp with Temple blocks
+    collision_point = ray[1] + ray[2] * dist
+
+    rev_ray = (v, -e)
+    rev_dist = temple_ray_intersection(temple, rev_ray) - PULL_OUT_M # subtract to avoid colliding Mirror with Temple blocks
+    rev_collision_point = rev_ray[1] + rev_ray[2] * rev_dist
+    
+    return ((collision_point, -e), dist + rev_dist, rev_collision_point)
+end
+
+function generate_long_segment(iter_cnt::Int = 100)
+    ray, length, endpoint = generate_segment()
+    for i in 1:iter_cnt
+        new_ray, new_length, new_endpoint = generate_segment()
+        if new_length > length
+            ray = new_ray
+            length = new_length
+            endpoint = new_endpoint
+        end
+    end
+    return (ray, length, endpoint)
+end
+
+"""
+    longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.5)
+
+    Returns ((v, e), length, endpoint) where v is the starting point, e is the direction, length is the length of the ray, and endpoint is the point of collision.
+    The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
+    The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
+    Default banned_angle_range is around 30 degrees (0.5 rad).
+"""
+function longest_segment_from_point(v::Array{Float64, 1}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.5)
+    if length(v) != 2
+        throw(ArgumentError("Input vector v must have length 2"))
+    end
+
+    max_length = 0
+    max_ray = ([0, 0], [0, 0])
+    max_endpoint = [0, 0]
+
+    # radians from 0 to 2π, steps of 1 degree
+    for e in 0:359
+        a = deg2rad(e)
+        
+        if banned_angle != -1.0
+            if abs(a - banned_angle) < banned_angle_range || abs(a - banned_angle + 2π) < banned_angle_range || abs(a - banned_angle - 2π) < banned_angle_range
+                continue
+            end
+        end
+        
+        ray = (v, [cos(a), sin(a)])
+        dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
+        collision_point = ray[1] + ray[2] * dist
+
+        if dist > max_length
+            max_length = dist
+            max_ray = (v, ray[2])
+            max_endpoint = collision_point
+        end
+    end
+    
+    return (max_ray, max_length, max_endpoint)
+end
+
+function place_mirror(v::Array{Float64, 1}, e::Float64)
+    return (v[1] - cos(e) * 0.25, v[2] - sin(e) * 0.25) # 0.25 is the distance from the endpoint to the mirror edges
+end
+
+function generate_greedy_solution()
+    rays = []
+
+    ray, len, endpoint = generate_long_segment()
+    push!(rays, ray)
+
+    for i in 1:MIRRORS
+        # calculate angle from endpoint to the starting point of the previous ray
+        banned_angle = atan(ray[1][2] - endpoint[2], ray[1][1] - endpoint[1])
+        ray, len, endpoint = longest_segment_from_point(endpoint, banned_angle)
+        push!(rays, ray)
+    end
+
+    my_solution = Matrix{Float64}(undef, 0, 3)
+
+    lamp_angle = atan(rays[1][2][2], rays[1][2][1])
+    my_solution = vcat(my_solution, [rays[1][1][1] rays[1][1][2] lamp_angle])
+
+    # Compute the angles for the mirrors
+    for i in 1:(length(rays) - 1)
+        end_point = rays[i + 1][1]
+        direction1 = rays[i][2]
+        direction2 = rays[i + 1][2]
+
+        angle_between_rays = atan(direction2[2], direction2[1]) - atan(direction1[2], direction1[1])
+        mirror_angle = atan(direction1[2], direction1[1]) + angle_between_rays / 2
+        mirror = place_mirror(end_point, mirror_angle)
+
+        if mirror_angle < 0
+            mirror_angle += 2π
+        end
+
+        my_solution = vcat(my_solution, [mirror[1] mirror[2] mirror_angle])
+    end
+
+    return my_solution
+end
+
+# Random.seed!(3) # for reproducibility in Debug
+
+while true
+    my_solution = generate_greedy_solution()
+    evaluate_solution(my_solution)
+end
