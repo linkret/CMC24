@@ -185,7 +185,7 @@ while true
     global sum_scores, num_scores, num_valid_scores, best_score
     my_solution = generate_greedy_solution()
     length = calculate_solution_length(my_solution)
-    println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score
+    println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score # the correlation is sadly not super strong
     
     score = evaluate_solution(my_solution)
     
