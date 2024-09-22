@@ -65,7 +65,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
         throw(ArgumentError("Input vector v must have length 2"))
     end
 
-    max_length = 0
+    max_length = -1000
     max_ray = ([0, 0], [0, 0])
     max_endpoint = [0, 0]
 
@@ -95,7 +95,8 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
         dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
         collision_point = ray[1] + ray[2] * dist
 
-        score = dist - intersections * 2.0 # penalty -2.0 for every intersection
+        score_noise = 0 # rand() * 0.5 - 0.25 # probably doesn't help
+        score = dist - intersections * 1.2 + score_noise # penalty for every intersection, plus random noise
         if score > max_length
             max_length = score
             max_ray = (v, ray[2])
