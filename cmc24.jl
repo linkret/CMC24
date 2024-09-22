@@ -8,6 +8,7 @@ using Measures
 using Plots; gr()
 using UUIDs
 using DelimitedFiles
+using Profile
 
 temple_string =
 #1  2  3  4  5  6  7  8  9  0  1  2  3  4  5  6  7  8  9  0
@@ -417,7 +418,8 @@ function raytrace(temple, lamp, mirrors)
 end
 
 function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
-    plot_scale = 150
+    downscale_factor = 10.0 # to speed up solution evaluation
+    plot_scale = 150 / downscale_factor 
     plot_size = plot_scale .* temple.shape 
     
     plot(
@@ -440,6 +442,8 @@ function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
         θ = LinRange(0, 2π, n+1)
         return Shape(x .+ r*cos.(θ), y .+ r*sin.(θ))
     end
+
+    # TODO: try to copy fplot1 into this, so only the path and mirrors need to be additionally plotted
     
     # plot the lightened area
     if path ≠ nothing
@@ -532,23 +536,28 @@ function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
 end
 
 function evaluate(temple, path)
-    fplot1 = cmc24_plot(temple)
+    global fplot1, img1
+    #fplot1 = cmc24_plot(temple)
+    #tinfo = @timed begin
     fplot2 = cmc24_plot(temple, path=path)
+    #end
+    #println("Time to plot the path: ", tinfo.time, " s")
     
-    img1 = FileIO.load(fplot1)
-    img2 = FileIO.load(fplot2)
-    
+    # img1 = FileIO.load(fplot1)
+    img2 = FileIO.load(fplot2) # slow
+
     # count the total number of the plot pixels
     total = length(img1)
-    
+
     # count the number of vacant pixels recognized by being bright
-    vacant = sum(p.r > 0.7 for p ∈ img1)
-    
+    vacant = sum(p.r > 0.7 for p ∈ img1) # can precompute 
+
     # count the number of pixels changed due to the light ray
     score = sum(p1 ≠ p2 for (p1, p2) ∈ zip(img1, img2))
 
+
     # delete files fplot1 and fplot2
-    rm(fplot1)
+    # rm(fplot1)
     rm(fplot2)
     
     return total, vacant, score
@@ -585,7 +594,7 @@ function load_solution_file(filename::String)
     score = parse(Float64, lines[1])
 
     # Extract the matrix
-    matrix_data = readdlm(IOBuffer(join(lines[2:end], "\n")), Float64)
+    matrix_data = readdlm(IOBuffer(join(lines[2:end], "\n")), Float64) # TODO: pretty sure that this thing is slow as fk and should not be used
 
     return score, matrix_data
 end
@@ -622,10 +631,14 @@ function evaluate_solution(cmc24_solution)
 end
 
 temple = load_temple(temple_string, block_size)
+
 if isempty(temple)
     println(stderr, "ERROR! The temple couldn't be loaded.")
     finalize()
     exit()
 end
+
+fplot1 = cmc24_plot(temple) # precompute the static base plot
+img1 = FileIO.load(fplot1) # preload the static base image
 
 # evaluate_solution(test_solution)
