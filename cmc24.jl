@@ -78,9 +78,11 @@ function load_temple(temple_string, block_size)
     # println(stderr, " " * temple_string)
     rows = split(replace(strip(temple_string), " " => ""), '\n')
     temple_shape = length(rows[1]), length(rows)
+    grid = []
 
     temple = Set()
     for (j, row) ∈ enumerate(rows)
+        grid_row = []
         for (i, c) ∈ enumerate(row)
             if c == 'O'
                 x = (i - 1) * block_size
@@ -104,17 +106,21 @@ function load_temple(temple_string, block_size)
                 )
                 
                 push!(temple, block)
+                push!(grid_row, block)
+            else 
+                push!(grid_row, nothing)
             end
         end
+        pushfirst!(grid, grid_row)
     end
-    # display(temple)
 
     println(stderr, "The temple of size $temple_shape is loaded.")
 
     return (
         blocks = temple,
         shape = temple_shape,
-        size = block_size .* temple_shape
+        size = block_size .* temple_shape,
+        grid = grid
     )
 end
 
@@ -174,14 +180,21 @@ function load_solution(cmc24_solution, mirror_length)
 end
 
 function point_in_block(temple, point)
-    for cell ∈ temple.blocks
+    #for cell ∈ temple.blocks
+        cell = block_from_point(temple, point)
         # if the point is within bottom-left and top-right vertex
-        if all(cell.v1 .≤ point .≤ cell.v3)
+        if cell ≠ nothing && all(cell.v1 .≤ point .≤ cell.v3)
             return true
         end
-    end
+    #end
 
     return false
+end
+
+function block_from_point(temple, point)
+    x = floor(Int, point[1])
+    y = floor(Int, point[2])
+    return temple.grid[y + 1][x + 1]
 end
 
 function point_sector(temple, point)
@@ -528,8 +541,9 @@ function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
     end
     
     solution_hash = hex12(hash([temple, lamp, mirrors, path]))
-    uuid = hex12(UUIDs.uuid4().value)
-    filename = "cmc24_solution_" * solution_hash * "_" * uuid * ".png"
+    # uuid = hex12(UUIDs.uuid4().value) # don't need this
+    # filename = "cmc24_solution_" * solution_hash * "_" * uuid * ".png"
+    filename = "cmc24_solution_" * solution_hash * ".png"
     savefig(filename)
     
     return filename
@@ -550,13 +564,12 @@ function evaluate(temple, path)
     total = length(img1)
 
     # count the number of vacant pixels recognized by being bright
-    vacant = sum(p.r > 0.7 for p ∈ img1) # can precompute 
+    vacant = sum(p.r > 0.7 for p ∈ img1) # can precompute, but its not that slow
 
     # count the number of pixels changed due to the light ray
     score = sum(p1 ≠ p2 for (p1, p2) ∈ zip(img1, img2))
 
-
-    # delete files fplot1 and fplot2
+    # delete image files
     # rm(fplot1)
     rm(fplot2)
     
@@ -565,7 +578,7 @@ end
 
 function finalize(temple=nothing, lamp=nothing, mirrors=nothing, path=nothing)
     if temple ≠ nothing
-        # Can uncomment if we want to inspect the image of the invalid solution
+        # Can uncomment if we want to inspect the image with the invalid solution
         # cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
     
@@ -587,7 +600,7 @@ function load_solution_file(filename::String)
     score = parse(Float64, lines[1])
     
     # Extract the matrix
-    matrix_data = readdlm(IOBuffer(join(lines[2:end], "\n")), Float64) # TODO: pretty sure that this thing is slow as fk and should not be used
+    matrix_data = readdlm(IOBuffer(join(lines[2:end], "\n")), Float64) # a bit slow but whatever
     
     return score, matrix_data
 end
@@ -638,3 +651,5 @@ img1 = FileIO.load(fplot1) # preload the static base image
 
 println("Current best solution: ")
 evaluate_solution(test_solution)
+
+# rm(fplot1) # delete the static base plot # we usually perform this cleanup in main.jl

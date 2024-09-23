@@ -8,7 +8,7 @@ include("cmc24.jl")
 
 MIRRORS = 8
 PULL_OUT_L = 0.1
-PULL_OUT_M = 1.2 # probably too extreme, need to implement this in another way
+PULL_OUT_M = 0.5 # 1.2 was probably too extreme
 
 """
     generate_segment()
@@ -115,7 +115,50 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
 end
 
 function place_mirror(v::Array{Float64, 1}, e::Float64)
-    return (v[1] - cos(e) * 0.25, v[2] - sin(e) * 0.25) # 0.25 is the distance from the endpoint to the mirror edges
+    p1 = [v[1] - cos(e) * 0.5, v[2] - sin(e) * 0.5] # leftmost possible point
+    p2 = [v[1] + cos(e) * 0.5, v[2] + sin(e) * 0.5] # rightmost possible point
+    p3 = [v[1] - cos(e) * 0.25, v[2] - sin(e) * 0.25] # point that puts center of mirror at v, 0.25 is the distance from the endpoint to the mirror edges
+
+    tp1 = [floor(p1[1]), floor(p1[2])]
+    tp2 = [floor(p2[1]), floor(p2[2])]
+    
+    blocks = [] # max 4 interesting blocks for our mirror
+    
+    for x in tp1[1]:tp2[1]
+        for y in tp1[2]:tp2[2]
+            block = block_from_point(temple, [x, y])
+            if isnothing(block)
+                continue
+            end
+            push!(blocks, block)
+        end
+    end
+
+    if length(blocks) == 0
+        return (p3, true) # can put wherever, all are empty
+    end
+
+    if tp1 == tp2 && length(blocks) == 1
+        return ([], false) # cannot place mirror anywhere, only one full block
+    end
+
+    # TODO: dont let mirrors intersect with each other
+
+    for shift in -0.499:0.1:0.499 # try translating until we avoid all blocks
+        p = [v[1] + cos(e) * shift, v[2] + sin(e) * shift]
+        valid = true
+        for block in blocks
+            if segment_block_intersection((p, mirror_length, e), block)
+                valid = false
+                break
+            end
+        end
+        if valid
+            return (p, true)
+        end
+    end
+
+    return ([], false) # couldn't place mirror anywhere
 end
 
 function generate_greedy_solution()
@@ -152,7 +195,11 @@ function generate_greedy_solution()
             mirror_angle += 2π
         end
         
-        mirror = place_mirror(end_point, mirror_angle)
+        mirror, okay = place_mirror(end_point, mirror_angle)
+        if !okay
+            println("Could not place mirror ", i)
+            return []
+        end
         my_solution = vcat(my_solution, [mirror[1] mirror[2] mirror_angle])
     end
 
@@ -184,6 +231,9 @@ num_valid_scores = 0.0
 while true
     global sum_scores, num_scores, num_valid_scores, best_score
     my_solution = generate_greedy_solution()
+    if isempty(my_solution)
+        continue # was invalid and quit early
+    end
     length = calculate_solution_length(my_solution)
     println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score # the correlation is sadly not super strong
     
