@@ -569,7 +569,7 @@ function finalize(temple=nothing, lamp=nothing, mirrors=nothing, path=nothing)
         # cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
     
-    println(0)  # stdout print of a fallback result in a case of early exit
+    # println(0)  # stdout print of a fallback result in a case of early exit
 
     # exit() # uncomment if we want to stop the script execution
     return
