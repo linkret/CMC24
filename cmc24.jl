@@ -683,6 +683,10 @@ function evaluate_solution(cmc24_solution)
         cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
 
+    # if score_percent < 20
+    #     cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+    # end
+
     return score_percent
 end
 
