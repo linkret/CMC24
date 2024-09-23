@@ -101,7 +101,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
 
         collision_point = ray[1] + ray[2] * dist
 
-        score_noise = 0 # rand() * 0.5 - 0.25 # seems to not help. And bigger noise is even worse
+        score_noise = 0 # rand() * 0.4 - 0.2 # seems to not help. And bigger noise is even worse
         score = dist - intersections * 1.2 + score_noise # penalty for every intersection, plus random noise
         if score > max_length
             max_length = score
@@ -166,15 +166,15 @@ function generate_greedy_solution()
     ray, len, endpoint = generate_long_segment()
     push!(rays, ray)
 
-    #tinfo = @timed begin
+    tinfo = @timed begin
     for i in 1:MIRRORS
         # calculate angle from endpoint to the starting point of the previous ray
         banned_angle = atan(ray[1][2] - endpoint[2], ray[1][1] - endpoint[1])
         ray, len, endpoint = longest_segment_from_point(endpoint, rays, banned_angle)
         push!(rays, ray)
     end
-    # end # @time
-    # println("Time to greedily generate: ", tinfo.time, " s")
+    end # @time
+    println("Time to greedily generate: ", tinfo.time, " s")
 
     my_solution = Matrix{Float64}(undef, 0, 3)
 
@@ -216,16 +216,16 @@ function calculate_solution_length(solution)
     return sum
 end
 
+# Profile.clear()
+# @profile begin
+# elapsed_time = @elapsed begin
+
 # Random.seed!(0) # for reproducibility in Debug
 
 sum_scores = 0.0
 best_score = 0.0
 num_scores = 0.0
 num_valid_scores = 0.0
-
-# Profile.clear()
-# @profile begin
-# elapsed_time = @elapsed begin
 
 while true
     global sum_scores, num_scores, num_valid_scores, best_score
@@ -251,8 +251,6 @@ while true
     #     break
     # end
 end
-
-rm(fplot1)
 
 # end # elapsed_time
 # # ProfileView.view()

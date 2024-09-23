@@ -314,8 +314,29 @@ end
 function temple_ray_intersection(temple, ray)
     t_min = ∞
     for block ∈ temple.blocks
-        for segment ∈ [block.s1, block.s2, block.s3, block.s4]
-            (case, t, u) = ray_segment_intersection(ray, segment)
+        if ray[1][2] <= block.s1[1][2]
+            (case, t, u) = ray_segment_intersection(ray, block.s1)
+            if (case == 2 || case == 3) && (t < t_min) && (t > ε)
+                t_min = t
+            end
+        end
+
+        if ray[1][1] >= block.s2[1][1]
+            (case, t, u) = ray_segment_intersection(ray, block.s2)
+            if (case == 2 || case == 3) && (t < t_min) && (t > ε)
+                t_min = t
+            end
+        end
+
+        if ray[1][2] >= block.s3[1][2]
+            (case, t, u) = ray_segment_intersection(ray, block.s3)
+            if (case == 2 || case == 3) && (t < t_min) && (t > ε)
+                t_min = t
+            end
+        end
+
+        if ray[1][1] <= block.s4[1][1]
+            (case, t, u) = ray_segment_intersection(ray, block.s4)
             if (case == 2 || case == 3) && (t < t_min) && (t > ε)
                 t_min = t
             end
@@ -372,13 +393,11 @@ function check_solution(temple, lamp, mirrors)
     end
     
     # check if some mirrors intersect
-    for (m1, mirror1) ∈ enumerate(mirrors[1:end-1])
-        for (m2, mirror2) ∈ enumerate(mirrors[m1+1:end])
-            if segment_segment_intersection(mirror1.s, mirror2.s)
-                println(stderr, "ERROR! Mirrors $m1 & $m2 intersect.")
-                finalize(temple, lamp, mirrors)
-                return false
-            end
+    for (m1, mirror1) ∈ enumerate(mirrors[1:end-1]), (m2, mirror2) ∈ enumerate(mirrors[m1+1:end])
+        if segment_segment_intersection(mirror1.s, mirror2.s)
+            println(stderr, "ERROR! Mirrors $m1 & $(m1+m2) intersect.")
+            finalize(temple, lamp, mirrors)
+            return false
         end
     end
     
@@ -656,7 +675,7 @@ end
 fplot1 = cmc24_plot(temple) # precompute the static base plot
 img1 = FileIO.load(fplot1) # preload the static base image
 
-println("Current best solution: ")
-evaluate_solution(test_solution)
+# println("Current best solution: ")
+# evaluate_solution(test_solution)
 
 # rm(fplot1) # delete the static base plot # we usually perform this cleanup in main.jl
