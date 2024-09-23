@@ -575,27 +575,20 @@ function finalize(temple=nothing, lamp=nothing, mirrors=nothing, path=nothing)
     return
 end
 
-test_solution = [
-    15.281232291465962	18.90116605616258	-1.417934992207285;
-    17.648869096300675	2.04664655175534	0.5913027966321329;
-    7.533730597375915	8.13219225471247	1.5271630954950384;
-    17.74778255182625	13.622898491803245	5.480333851262195;
-    12.773033517329425	3.502138054203397	3.7175513067479216;
-    2.028179308407874	2.825416087146001	5.45415391248228;
-    4.390683595385444	17.67861423253208	0.5759586531581288;
-    16.838707374578526	14.784922261367987	4.721115626644661;
-    4.022889393946994	11.110045590697135	5.262167694762903;
-]
-
 function load_solution_file(filename::String)
-    lines = readlines(filename)
+    if !isfile(filename)
+        println(stderr, "ERROR! The file $filename doesn't exist.")
+        return 0, []
+    end
 
+    lines = readlines(filename)
+    
     # Extract the float
     score = parse(Float64, lines[1])
-
+    
     # Extract the matrix
     matrix_data = readdlm(IOBuffer(join(lines[2:end], "\n")), Float64) # TODO: pretty sure that this thing is slow as fk and should not be used
-
+    
     return score, matrix_data
 end
 
@@ -630,6 +623,8 @@ function evaluate_solution(cmc24_solution)
     return score_percent
 end
 
+
+test_solution = load_solution_file("best.txt")[2]
 temple = load_temple(temple_string, block_size)
 
 if isempty(temple)
@@ -641,4 +636,5 @@ end
 fplot1 = cmc24_plot(temple) # precompute the static base plot
 img1 = FileIO.load(fplot1) # preload the static base image
 
-# evaluate_solution(test_solution)
+println("Current best solution: ")
+evaluate_solution(test_solution)
