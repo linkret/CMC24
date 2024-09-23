@@ -179,11 +179,15 @@ function load_solution(cmc24_solution, mirror_length)
     return (lamp, mirrors)
 end
 
-function point_in_block(temple, point)
+function point_in_block(point, block)
+    return block ≠ nothing && all(block.v1 .≤ point .≤ block.v3);
+end
+
+function point_in_temple(temple, point)
     #for cell ∈ temple.blocks
         cell = block_from_point(temple, point)
         # if the point is within bottom-left and top-right vertex
-        if cell ≠ nothing && all(cell.v1 .≤ point .≤ cell.v3)
+        if point_in_block(point, cell)
             return true
         end
     #end
@@ -294,6 +298,8 @@ end
 
 function segment_block_intersection(segment, block)
     return any((
+        point_in_block(segment[1], block),
+        point_in_block(segment[1] + segment[2] * [cos(segment[3]), sin(segment[3])], block),
         segment_segment_intersection(segment, block.s1),
         segment_segment_intersection(segment, block.s2),
         segment_segment_intersection(segment, block.s3),
@@ -341,7 +347,7 @@ function check_solution(temple, lamp, mirrors)
     end
     
     # check the lamp isn't in some building block
-    if point_in_block(temple, lamp.v)
+    if point_in_temple(temple, lamp.v)
         println(stderr, "ERROR! Lamp is placed in a building block.")
         finalize(temple, lamp, mirrors)
         return false
@@ -349,7 +355,7 @@ function check_solution(temple, lamp, mirrors)
     
     # check some mirror end isn't in some building block
     for (m, mirror) ∈ enumerate(mirrors)
-        if point_in_block(temple, mirror.v1) || point_in_block(temple, mirror.v2)
+        if point_in_temple(temple, mirror.v1) || point_in_temple(temple, mirror.v2)
             println(stderr, "ERROR! Mirror $m has one of its ends inside a building block.")
             finalize(temple, lamp, mirrors)
             return false
@@ -430,9 +436,8 @@ function raytrace(temple, lamp, mirrors)
     return path
 end
 
-function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
-    downscale_factor = 10.0 # to speed up solution evaluation
-    plot_scale = 150 / downscale_factor 
+function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing, downscale_factor=5.0)
+    plot_scale = 150 / downscale_factor # to speed up solution evaluation
     plot_size = plot_scale .* temple.shape 
     
     plot(
@@ -620,9 +625,11 @@ function evaluate_solution(cmc24_solution)
     # println(stderr, "Base plot has $(commas(vacant)) vacant of total $(commas(total)) pixels.")
     score_percent = 100. * score / vacant
     println(stderr, "Your CMC24 score is $(commas(score)) / $(commas(vacant)) = $(100. * score / vacant) %.")
+
+    cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path) # TODO: remove
     
     best_score, best_matrix = load_solution_file("best.txt")
-    if score_percent > best_score
+    if score_percent >= best_score
         println(stderr, "Congratulations! You have a new best score.")
         open("best.txt", "w") do io
             println(io, score_percent)

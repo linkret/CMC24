@@ -17,7 +17,7 @@ PULL_OUT_M = 0.5 # 1.2 was probably too extreme
 """
 function generate_segment()
     v = [0, 0]
-    while point_in_block(temple, v)
+    while point_in_temple(temple, v)
         x = rand() * 19.0 + 1
         y = rand() * 19.0 + 1
         v = [x, y]
@@ -93,7 +93,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
             r = ray_ray_intersection(ray, ray2) # could try segment_segment_intersection, might be faster, who cares
             if r != (4, 0, 0) && r != (2, 0, 0) # 2 and 4 mean no intersection
                 x, y = r[2], r[3]
-                if x >= 0 && x <= 20 && y >= 0 && y <= 20 && !point_in_block(temple, [x, y])
+                if x >= 0 && x <= 20 && y >= 0 && y <= 20 && !point_in_temple(temple, [x, y])
                     intersections += 1
                 end
             end
@@ -124,8 +124,8 @@ function place_mirror(v::Array{Float64, 1}, e::Float64)
     
     blocks = [] # max 4 interesting blocks for our mirror
     
-    for x in tp1[1]:tp2[1]
-        for y in tp1[2]:tp2[2]
+    for x in min(tp1[1],tp2[1]):max(tp1[1],tp2[1])
+        for y in min(tp1[2],tp2[2]):max(tp1[2],tp2[2])
             block = block_from_point(temple, [x, y])
             if isnothing(block)
                 continue
@@ -142,18 +142,23 @@ function place_mirror(v::Array{Float64, 1}, e::Float64)
         return ([], false) # cannot place mirror anywhere, only one full block
     end
 
+    # println(v)
+    # println(blocks)
+
     # TODO: dont let mirrors intersect with each other
 
-    for shift in -0.499:0.1:0.499 # try translating until we avoid all blocks
+    for shift in -0.01:-0.1:-0.499 # try translating until we avoid all blocks
         p = [v[1] + cos(e) * shift, v[2] + sin(e) * shift]
-        valid = true
-        for block in blocks
-            if segment_block_intersection((p, mirror_length, e), block)
-                valid = false
-                break
-            end
-        end
+        valid = (temple_segment_intersection(temple, ((p, 0.5, e))) == false) # valid if no intersection with temple
+        # valid = true
+        # for block in blocks
+        #     if segment_block_intersection((p, mirror_length, e), block)
+        #         valid = false
+        #         break
+        #     end
+        # end
         if valid
+            # println("Placed mirror at: ", p)
             return (p, true)
         end
     end
@@ -217,7 +222,7 @@ function calculate_solution_length(solution)
     return sum
 end
 
-# Random.seed!(3) # for reproducibility in Debug
+# Random.seed!(0) # for reproducibility in Debug
 
 sum_scores = 0.0
 best_score = 0.0
