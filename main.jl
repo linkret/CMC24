@@ -87,19 +87,18 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
         end
         
         ray = (v, [cos(a), sin(a)])
-
+        dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
+        
         intersections = 0
         for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
             r = ray_ray_intersection(ray, ray2) # could try segment_segment_intersection, might be faster, who cares
             if r != (4, 0, 0) && r != (2, 0, 0) # 2 and 4 mean no intersection
-                x, y = r[2], r[3]
-                if x >= 0 && x <= 20 && y >= 0 && y <= 20 && !point_in_temple(temple, [x, y])
+                if r[2] < dist # r[2] = t is the distance to the intersection
                     intersections += 1
                 end
             end
         end
 
-        dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
         collision_point = ray[1] + ray[2] * dist
 
         score_noise = 0 # rand() * 0.5 - 0.25 # seems to not help. And bigger noise is even worse
