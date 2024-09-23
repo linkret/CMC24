@@ -3,6 +3,7 @@ using LinearAlgebra
 using Random
 using Profile
 using ProfileView
+using Base.Iterators: drop
 
 include("cmc24.jl")
 
@@ -40,7 +41,7 @@ function generate_segment()
     return ((collision_point, -e), dist + rev_dist, rev_collision_point)
 end
 
-function generate_long_segment(iter_cnt::Int = 200)
+function generate_long_segment(iter_cnt::Int = 30)
     ray, length, endpoint = generate_segment()
     for i in 1:iter_cnt
         new_ray, new_length, new_endpoint = generate_segment()
@@ -62,7 +63,7 @@ end
     The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
     Default banned_angle_range is around 15 degrees (0.20 rad).
 """
-function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.2)
+function longest_segment_from_point(v::Array{Float64, 1}, rays, mirrors, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.2)
     if length(v) != 2
         throw(ArgumentError("Input vector v must have length 2"))
     end
@@ -77,7 +78,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
     # This could allow us to try even more angles (finer angle-step), or more starting-points
 
     # radians from 0 to 2π, steps of 1 
-    for e in 0:359
+    for e in 0:1:359
         a = deg2rad(e)
         
         if banned_angle != -1.0
@@ -88,10 +89,25 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
         
         ray = (v, [cos(a), sin(a)])
         dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
+
+        mirror_in_the_way = false
+        for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
+            p = [mirror[1], mirror[2]]
+            r = ray_segment_intersection(ray, (p, mirror_length, mirror[3]))
+            if r[1] != 1 && r[2] < dist # 2 and 3 mean intersection closer than collision_point with temple
+                mirror_in_the_way = true
+                break
+            end
+        end
+
+        if mirror_in_the_way
+            # TODO: implement multiple reflections here
+            continue
+        end
         
         intersections = 0
         for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
-            r = ray_ray_intersection(ray, ray2) # could try segment_segment_intersection, might be faster, who cares
+            r = ray_ray_intersection(ray, ray2)
             if r != (4, 0, 0) && r != (2, 0, 0) # 2 and 4 mean no intersection
                 if r[2] < dist # r[2] = t is the distance to the intersection
                     intersections += 1
@@ -113,7 +129,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Fl
     return (max_ray, max_length, max_endpoint)
 end
 
-function place_mirror(v::Array{Float64, 1}, e::Float64)
+function place_mirror(v::Array{Float64, 1}, e::Float64, rays, mirrors)
     p1 = [v[1] - cos(e) * 0.5, v[2] - sin(e) * 0.5] # leftmost possible point
     p2 = [v[1] + cos(e) * 0.5, v[2] + sin(e) * 0.5] # rightmost possible point
     p3 = [v[1] - cos(e) * 0.25, v[2] - sin(e) * 0.25] # point that puts center of mirror at v, 0.25 is the distance from the endpoint to the mirror edges
@@ -133,21 +149,34 @@ function place_mirror(v::Array{Float64, 1}, e::Float64)
         end
     end
 
-    if length(blocks) == 0
-        return (p3, true) # can put wherever, all are empty
-    end
-
     if tp1 == tp2 && length(blocks) == 1
         return ([], false) # cannot place mirror anywhere, only one full block
     end
 
-    # TODO: dont let mirrors intersect with each other
-
-    for shift in -0.01:-0.1:-0.499 # try translating until we avoid all blocks
+    for shift in -0.01:-0.05:-0.499 # try translating until we avoid all blocks
         p = [v[1] + cos(e) * shift, v[2] + sin(e) * shift]
         valid = true
         for block in blocks
             if segment_block_intersection((p, mirror_length, e), block)
+                valid = false
+                break
+            end
+        end
+        if !valid
+            continue
+        end
+        for ray in rays[1:end-2] # end-2 because we surely intersect with the last two rays - our mirror must touch them
+            r = ray_segment_intersection(ray, (p, mirror_length, e))
+            if r[1] != 1
+                valid = false
+                break
+            end
+        end
+        if !valid
+            continue
+        end
+        for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
+            if segment_segment_intersection((p, mirror_length, e), ([mirror[1], mirror[2]], mirror_length, mirror[3]))
                 valid = false
                 break
             end
@@ -165,24 +194,19 @@ function generate_greedy_solution()
 
     ray, len, endpoint = generate_long_segment()
     push!(rays, ray)
-
-    tinfo = @timed begin
-    for i in 1:MIRRORS
-        # calculate angle from endpoint to the starting point of the previous ray
-        banned_angle = atan(ray[1][2] - endpoint[2], ray[1][1] - endpoint[1])
-        ray, len, endpoint = longest_segment_from_point(endpoint, rays, banned_angle)
-        push!(rays, ray)
-    end
-    end # @time
-    println("Time to greedily generate: ", tinfo.time, " s")
-
+    
     my_solution = Matrix{Float64}(undef, 0, 3)
 
     lamp_angle = atan(rays[1][2][2], rays[1][2][1])
     my_solution = vcat(my_solution, [rays[1][1][1] rays[1][1][2] lamp_angle])
 
-    # Compute the angles for the mirrors
-    for i in 1:(length(rays) - 1)
+    tinfo = @timed begin
+    for i in 1:MIRRORS
+        # calculate angle from endpoint to the starting point of the previous ray
+        banned_angle = atan(ray[1][2] - endpoint[2], ray[1][1] - endpoint[1])
+        ray, len, endpoint = longest_segment_from_point(endpoint, rays, my_solution, banned_angle)
+        push!(rays, ray)
+
         end_point = rays[i + 1][1]
         direction1 = rays[i][2]
         direction2 = rays[i + 1][2]
@@ -194,13 +218,15 @@ function generate_greedy_solution()
             mirror_angle += 2π
         end
         
-        mirror, okay = place_mirror(end_point, mirror_angle)
+        mirror, okay = place_mirror(end_point, mirror_angle, rays, my_solution)
         if !okay
             println("Could not place mirror ", i)
             return []
         end
         my_solution = vcat(my_solution, [mirror[1] mirror[2] mirror_angle])
     end
+    end # @time
+    println("Time to greedily generate: ", tinfo.time, " s")
 
     return my_solution
 end
@@ -236,9 +262,16 @@ while true
     length = calculate_solution_length(my_solution)
     println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score # the correlation is sadly not super strong
     
+    #tinfo = @timed begin
     score = evaluate_solution(my_solution)
+    #end # @time
+    #println("Time to evaluate: ", tinfo.time, " s")
     
     num_scores += 1
+    if score > 0 && score < 20
+        break
+    end
+
     if score > 0 # could use > 5 to remove solutions where the Ray immediately hits a wrong mirror and then a wall
         best_score = max(best_score, score)
         sum_scores += score
@@ -247,7 +280,7 @@ while true
     
     println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
 
-    # if num_valid_scores > 5 # break for the sake of profiling
+    # if num_valid_scores > 1 # break for the sake of profiling
     #     break
     # end
 end
