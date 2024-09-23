@@ -7,7 +7,7 @@ using ProfileView
 include("cmc24.jl")
 
 MIRRORS = 8
-PULL_OUT_L = 0.1
+PULL_OUT_L = 0.5
 PULL_OUT_M = 0.5 # 1.2 was probably too extreme
 
 """
@@ -142,23 +142,18 @@ function place_mirror(v::Array{Float64, 1}, e::Float64)
         return ([], false) # cannot place mirror anywhere, only one full block
     end
 
-    # println(v)
-    # println(blocks)
-
     # TODO: dont let mirrors intersect with each other
 
     for shift in -0.01:-0.1:-0.499 # try translating until we avoid all blocks
         p = [v[1] + cos(e) * shift, v[2] + sin(e) * shift]
-        valid = (temple_segment_intersection(temple, ((p, 0.5, e))) == false) # valid if no intersection with temple
-        # valid = true
-        # for block in blocks
-        #     if segment_block_intersection((p, mirror_length, e), block)
-        #         valid = false
-        #         break
-        #     end
-        # end
+        valid = true
+        for block in blocks
+            if segment_block_intersection((p, mirror_length, e), block)
+                valid = false
+                break
+            end
+        end
         if valid
-            # println("Placed mirror at: ", p)
             return (p, true)
         end
     end

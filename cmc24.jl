@@ -298,8 +298,8 @@ end
 
 function segment_block_intersection(segment, block)
     return any((
-        point_in_block(segment[1], block),
-        point_in_block(segment[1] + segment[2] * [cos(segment[3]), sin(segment[3])], block),
+        #point_in_block(segment[1], block),
+        #point_in_block(segment[1] + segment[2] * [cos(segment[3]), sin(segment[3])], block),
         segment_segment_intersection(segment, block.s1),
         segment_segment_intersection(segment, block.s2),
         segment_segment_intersection(segment, block.s3),
@@ -625,11 +625,9 @@ function evaluate_solution(cmc24_solution)
     # println(stderr, "Base plot has $(commas(vacant)) vacant of total $(commas(total)) pixels.")
     score_percent = 100. * score / vacant
     println(stderr, "Your CMC24 score is $(commas(score)) / $(commas(vacant)) = $(100. * score / vacant) %.")
-
-    cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path) # TODO: remove
     
     best_score, best_matrix = load_solution_file("best.txt")
-    if score_percent >= best_score
+    if score_percent > best_score
         println(stderr, "Congratulations! You have a new best score.")
         open("best.txt", "w") do io
             println(io, score_percent)
