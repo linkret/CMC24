@@ -3,6 +3,11 @@ from tkinter import ttk
 import math
 from PIL import Image, ImageTk
 
+from julia import Julia
+from julia import Main
+
+jl = Julia(compiled_modules=False) # TODO: try with True
+Main.include("solutionEvaluation.jl")
 
 def draw_line_at_angle(canvas, x, y, angle, linetag):
     """
@@ -16,7 +21,7 @@ def draw_line_at_angle(canvas, x, y, angle, linetag):
     :param options: Other line options such as color, width, tags, etc.
     """
     # Convert angle to radians for the math functions
-    length=18
+    length=14
     angle_rad = math.radians(angle)
 
     x1 = x - length/2 * math.cos(angle_rad)
@@ -54,7 +59,6 @@ def on_mouse_wheel(event):
     selected = radio_var.get()
     linetag="line"+str(selected)
 
-    print(canvas.coords(linetag))
     x1, y1, x2, y2 = canvas.coords(linetag)
     x = (x1 + x2) / 2
     y = (y1 + y2) / 2
@@ -70,17 +74,41 @@ def on_mouse_wheel(event):
 
 
 def ispis():
+    # No longer needs its own button
     filename="solution.txt"
 
     with open(filename, 'w') as file:
         # Write a single float number
         file.write(f"{3.33}\n")  # bezveze broj jer takav je tvoj format ucitavanja
 
-        # Write 9 lines of 3 float numbers separated by space
+        # Write up to 9 lines of 3 float numbers separated by space
         for i in range(9):
-            x,y,kut=poz_x[i] / dimenzije*20,(dimenzije-poz_y[i]) / dimenzije*20,kutevi[i]/360*2*math.pi
-            numbers = f"{round(x, 6)} {round(y, 6)} {round(kut, 6)}"
-            file.write(numbers + '\n')
+            linetag = f"line{i}"
+            try:
+                x1, y1, x2, y2 = canvas.coords(linetag)
+                #x = (x1 + x2) / 2
+                #y = (y1 + y2) / 2
+                x, y, kut= x1/dimenzije*20, (dimenzije-y1)/dimenzije*20, kutevi[i]/360*2*math.pi
+                numbers = f"{round(x, 6)} {round(y, 6)} {round(kut, 6)}"
+                file.write(numbers + '\n')
+            except ValueError:
+                pass
+
+def evaluacija():
+    ispis()
+
+    filename="solution.txt"
+    result, result_img = Main.evaluate_and_draw(filename)
+    formatted_result = f"{float(result):.2f}"
+    result_var.set(f"Result: {formatted_result}")
+    print(formatted_result)
+
+    # Update the image
+    new_image = Image.open(result_img)  # Replace with the path to your new image
+    new_image = new_image.resize((dimenzije, dimenzije))  # Resize the image to fit the canvas
+    global img  # Declare img as global to update it
+    img = ImageTk.PhotoImage(new_image)
+    canvas.itemconfig(image_on_canvas, image=img)
 
 
 def move_selected_item(event):
@@ -99,7 +127,7 @@ def move_selected_item(event):
 
 # Create the main window
 root = tk.Tk()
-root.title("Draw Lines Based on Events")
+root.title("Mirror Placement")
 
 # Configure grid layout
 root.columnconfigure(0, weight=1)
@@ -113,7 +141,7 @@ img = ImageTk.PhotoImage(image)
 # Create a canvas to display the image
 canvas = tk.Canvas(root, width=dimenzije, height=dimenzije)
 canvas.grid(row=0, column=0, padx=0, pady=0)
-canvas.create_image(0, 0, anchor="nw", image=img)
+image_on_canvas = canvas.create_image(0, 0, anchor="nw", image=img)
 
 # Bind mouse click events to the canvas (left click)
 canvas.bind("<Button-1>", on_canvas_click)
@@ -140,8 +168,17 @@ for i in range(1, 9):
     radio_button = tk.Radiobutton(radio_frame, text=f"Zrcalo {i}", variable=radio_var, value=i)
     radio_button.pack(anchor="w")
 
-ispisi_button = ttk.Button(radio_frame, text="Ispisi", command=ispis)
-ispisi_button.pack(pady=10)  # Add some padding for aesthetics
+# Create a Label to display the result
+result_var = tk.StringVar(value="Result: ")
+result_label = ttk.Label(radio_frame, textvariable=result_var)
+result_label.pack(pady=10)
+
+# This button is no longer useful
+# ispisi_button = ttk.Button(radio_frame, text="Ispisi", command=ispis)
+# ispisi_button.pack(pady=10)  # Add some padding for aesthetics
+
+evaluiraj_button = ttk.Button(radio_frame, text="Evaluiraj", command=evaluacija)
+evaluiraj_button.pack(pady=10)  # Add some padding for aesthetics
 
 # Run the main loop
 root.mainloop()

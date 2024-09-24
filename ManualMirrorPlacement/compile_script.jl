@@ -3,4 +3,6 @@ Pkg.add("PackageCompiler")
 
 using PackageCompiler
 
-create_sysimage([]; precompile_execution_file="test.jl", sysimage_path="test.so")
+# nemoj ovo pozivat ako ti je Boga milo
+
+create_sysimage(precompile_execution_file="ManualMirrorPlacement/test.jl", sysimage_path="ManualMirrorPlacement/test.so", include_transitive_dependencies=false)

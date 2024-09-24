@@ -23,10 +23,10 @@ function evaluate_and_draw(filename)
     println(stderr, "Your CMC24 score is $(commas(score)) / $(commas(vacant)) = $(100. * score / vacant) %.")
     
     # create the presentation plot
-    cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+    img_file = cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
 
-    return score_percent
+    return score_percent, img_file
 end
 
-evaluate_and_draw("solution.txt")
+# evaluate_and_draw("solution.txt")
 

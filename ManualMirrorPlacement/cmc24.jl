@@ -120,10 +120,12 @@ end
 
 function load_solution(cmc24_solution, mirror_length)
     if size(cmc24_solution) ≠ (9, 3)
-        println(stderr, "ERROR! The solution isn't 9x3 size matrix.")
-        finalize()
-        return ()
+        println(stderr, "WARNING! The solution isn't 9x3 size matrix.")
+    #     finalize()
+    #     return ()
     end
+
+    mirror_cnt = size(cmc24_solution)[1] - 1
 
     if !(eltype(cmc24_solution) <: Number)
         println(stderr, "ERROR! The solution contains non-numerical inputs.")
@@ -149,7 +151,7 @@ function load_solution(cmc24_solution, mirror_length)
 
     # preprocess the mirrors
     mirrors = []
-    for m ∈ 1 : 8
+    for m ∈ 1 : mirror_cnt
         α = cmc24_solution[m + 1, 3]
         
         v = cmc24_solution[m + 1, 1:2]
@@ -418,7 +420,7 @@ function raytrace(temple, lamp, mirrors)
 end
 
 function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
-    downscale_factor = 10.0 # to speed up solution evaluation
+    downscale_factor = 1.0 # to speed up solution evaluation
     plot_scale = 150 / downscale_factor 
     plot_size = plot_scale .* temple.shape 
     
