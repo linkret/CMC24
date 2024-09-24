@@ -41,7 +41,7 @@ function generate_segment()
     return ((collision_point, -e), dist + rev_dist, rev_collision_point)
 end
 
-function generate_long_segment(iter_cnt::Int = 30)
+function generate_long_segment(iter_cnt::Int = 100)
     ray, length, endpoint = generate_segment()
     for i in 1:iter_cnt
         new_ray, new_length, new_endpoint = generate_segment()
