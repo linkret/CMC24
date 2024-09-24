@@ -9,6 +9,46 @@ from julia import Main
 jl = Julia(compiled_modules=False) # TODO: try with True
 Main.include("solutionEvaluation.jl")
 
+
+#dimenzije ploce
+dimenzije=1000
+debljina_crte=1
+
+kutevi=[0] * 9
+
+def upis_koordinata():
+    selected = radio_var.get()
+
+    text1.delete(0, tk.END)  # Clear the existing text
+    text2.delete(0, tk.END)  # Clear the existing text
+    text3.delete(0, tk.END)  # Clear the existing text
+
+    try:
+        linetag="line"+str(selected)
+
+        x1, y1, x2, y2 = canvas.coords(linetag)
+        xx = (x1 + x2) / 2
+        yy = (y1 + y2) / 2
+        
+        # Insert new text
+        text1.insert(0, str(xx))
+        text2.insert(0, str(yy))
+        text3.insert(0, str(kutevi[selected]))
+    except ValueError:
+            pass
+    
+    
+
+def mapa_boja():
+    boje={}
+    boje["line0"]="purple"
+    for i in range(1,9):
+        boje["line"+str(i)]="blue"
+
+    boje[f"line{radio_var.get()}"]="yellow"
+    
+    return boje
+    
 def draw_line_at_angle(canvas, x, y, angle, linetag):
     """
     Draws a line on the canvas at a specific angle.
@@ -21,7 +61,7 @@ def draw_line_at_angle(canvas, x, y, angle, linetag):
     :param options: Other line options such as color, width, tags, etc.
     """
     # Convert angle to radians for the math functions
-    length=14
+    length=(0.5/20)*dimenzije
     angle_rad = math.radians(angle)
 
     x1 = x - length/2 * math.cos(angle_rad)
@@ -31,9 +71,24 @@ def draw_line_at_angle(canvas, x, y, angle, linetag):
     y2 = y - length/2 * math.sin(angle_rad)  # Subtract y because canvas Y-axis is inverted
 
     # Draw the line using the calculated points
-    is_lamp = (linetag == "line0")
-    color = ["blue", "purple"][is_lamp]
-    canvas.create_line(x1, y1, x2, y2, fill=color, width=3, tags=linetag)
+    canvas.create_line(x1, y1, x2, y2, fill=mapa_boja()[linetag], width=debljina_crte, tags=linetag)
+    upis_koordinata()
+
+
+def on_enter(event):
+
+    selected=radio_var.get()
+
+    linetag="line"+str(selected)
+
+    canvas.delete(linetag)
+    
+    x=float(text1.get())
+    y=float( text2.get() )
+    kutevi[selected]=float( text3.get() )
+
+    draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
+
 
 
 def on_canvas_click(event):
@@ -47,11 +102,10 @@ def on_canvas_click(event):
 
     canvas.delete(linetag)
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
+    upis_koordinata()
 
-#dimenzije ploce
-dimenzije=600
 
-kutevi=[0] * 10
+
 
 def on_mouse_wheel(event):
     """Handle mouse wheel scrolling."""
@@ -65,13 +119,29 @@ def on_mouse_wheel(event):
 
     # Scroll up or down depending on the direction of the scroll
     if event.delta > 0:  # Scroll up
-        kutevi[selected]+=2
+        kutevi[selected]=(kutevi[selected]+2+360)%360
     else:  # Scroll down
         kutevi[selected]=(kutevi[selected]-2+360)%360
 
     canvas.delete(linetag)
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
+    upis_koordinata()
 
+def on_select():#it doesnt have event
+    selected = radio_var.get()
+    linetag="line"+str(selected)
+    
+    for i in range(9):
+        linetag = f"line{i}"
+        try:
+            x1, y1, x2, y2 = canvas.coords(linetag)
+            canvas.delete(linetag)
+            canvas.create_line(x1, y1, x2, y2, fill=mapa_boja()[linetag], width=debljina_crte, tags=linetag)
+        except ValueError:
+            pass
+    upis_koordinata()
+
+    
 
 def ispis():
     # No longer needs its own button
@@ -86,9 +156,9 @@ def ispis():
             linetag = f"line{i}"
             try:
                 x1, y1, x2, y2 = canvas.coords(linetag)
-                #x = (x1 + x2) / 2
-                #y = (y1 + y2) / 2
-                x, y, kut= x1/dimenzije*20, (dimenzije-y1)/dimenzije*20, kutevi[i]/360*2*math.pi
+                #xx = (x1 + x2) / 2
+                #yy = (y1 + y2) / 2
+                x, y, kut= x1/dimenzije*20, (dimenzije-y1)/dimenzije*20, kutevi[i]/360*2*math.pi#ovak mora bit jer autizam sastavljaca
                 numbers = f"{round(x, 6)} {round(y, 6)} {round(kut, 6)}"
                 file.write(numbers + '\n')
             except ValueError:
@@ -99,6 +169,7 @@ def evaluacija():
 
     filename="solution.txt"
     result, result_img = Main.evaluate_and_draw(filename)
+    
     formatted_result = f"{float(result):.2f}"
     result_var.set(f"Result: {formatted_result}")
     print(formatted_result)
@@ -125,6 +196,8 @@ def move_selected_item(event):
     elif event.keysym == "Right":
         canvas.move(item, 1, 0)
 
+    upis_koordinata()
+
 # Create the main window
 root = tk.Tk()
 root.title("Mirror Placement")
@@ -132,15 +205,38 @@ root.title("Mirror Placement")
 # Configure grid layout
 root.columnconfigure(0, weight=1)
 root.columnconfigure(1, weight=1)
+root.rowconfigure(0, weight=1)  # First row
+root.rowconfigure(1, weight=1)  # Second row
 
 # Load an image using PIL
 image = Image.open("baza.png")  # Replace with the path to your image
 image = image.resize((dimenzije, dimenzije))  # Resize the image to fit the canvas
 img = ImageTk.PhotoImage(image)
 
+
+
+
+# Create a frame for the text fields
+text_frame = ttk.Frame(root)
+text_frame.grid(row=0, column=0, columnspan=2, pady=1, sticky="n")
+
+# Create three text fields and place them side by side
+text1 = ttk.Entry(text_frame, width=10)
+text1.grid(row=0, column=0, padx=5)
+text1.bind('<Return>', on_enter)  # Bind Enter key to all entries
+
+text2 = ttk.Entry(text_frame, width=10)
+text2.grid(row=0, column=1, padx=5)
+text2.bind('<Return>', on_enter)  # Bind Enter key to all entries
+
+text3 = ttk.Entry(text_frame, width=10)
+text3.grid(row=0, column=2, padx=5)
+text3.bind('<Return>', on_enter)  # Bind Enter key to all entries
+
+
 # Create a canvas to display the image
 canvas = tk.Canvas(root, width=dimenzije, height=dimenzije)
-canvas.grid(row=0, column=0, padx=0, pady=0)
+canvas.grid(row=1, column=0, padx=0, pady=0)
 image_on_canvas = canvas.create_image(0, 0, anchor="nw", image=img)
 
 # Bind mouse click events to the canvas (left click)
@@ -158,14 +254,14 @@ radio_var = tk.IntVar(value=0)
 
 # Create a frame on the right side for the radio buttons
 radio_frame = ttk.Frame(root)
-radio_frame.grid(row=0, column=1, padx=10, pady=10, sticky="n")
+radio_frame.grid(row=1, column=1, padx=10, pady=10, sticky="n")
 
 # Create 9 radio buttons and place them in the frame
-radio_button = tk.Radiobutton(radio_frame, text="Lampa", variable=radio_var, value=0)
+radio_button = tk.Radiobutton(radio_frame, text="Lampa", variable=radio_var, value=0, command=on_select)
 radio_button.pack(anchor="w")
 
 for i in range(1, 9):
-    radio_button = tk.Radiobutton(radio_frame, text=f"Zrcalo {i}", variable=radio_var, value=i)
+    radio_button = tk.Radiobutton(radio_frame, text=f"Zrcalo {i}", variable=radio_var, value=i, command=on_select)
     radio_button.pack(anchor="w")
 
 # Create a Label to display the result
