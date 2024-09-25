@@ -395,7 +395,10 @@ function raytrace(temple, lamp, mirrors)
         end
 
         # check where ray would hit the temple
+        # tinfo = @timed begin
         t_temple = temple_ray_intersection(temple, ray)
+        # end
+        # println("Time to check the temple intersection: ", tinfo.time, " s")
 
         # closest hit point
         t = min(t_mirror, t_temple)
@@ -420,7 +423,7 @@ function raytrace(temple, lamp, mirrors)
 end
 
 function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
-    downscale_factor = 1.0 # to speed up solution evaluation
+    downscale_factor = 2.0 # to speed up solution evaluation
     plot_scale = 150 / downscale_factor 
     plot_size = plot_scale .* temple.shape 
     
@@ -530,8 +533,7 @@ function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing)
     end
     
     solution_hash = hex12(hash([temple, lamp, mirrors, path]))
-    uuid = hex12(UUIDs.uuid4().value)
-    filename = "cmc24_solution_" * solution_hash * "_" * uuid * ".png"
+    filename = "cmc24_solution_" * solution_hash * ".png"
     savefig(filename)
     
     return filename
@@ -601,7 +603,6 @@ function load_solution_file(filename::String)
     return score, matrix_data
 end
 
-
 function evaluate_solution(cmc24_solution)
     # load the solution
     lamp, mirrors = load_solution(cmc24_solution, mirror_length)
@@ -611,7 +612,6 @@ function evaluate_solution(cmc24_solution)
     
     # compute the ray path
     path = raytrace(temple, lamp, mirrors)
-    
     
     # evaluate the solution
     total, vacant, score = evaluate(temple, path)

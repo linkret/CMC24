@@ -1,18 +1,69 @@
 import tkinter as tk
 from tkinter import ttk
 import math
+import sys
+import time
+import subprocess
+import os
 from PIL import Image, ImageTk
 
 from julia import Julia
 from julia import Main
 
-jl = Julia(compiled_modules=False) # TODO: try with True
-Main.include("solutionEvaluation.jl")
+old_image = None
+start_time = time.time()
 
+daemon_mode = '-d' in sys.argv
+
+if daemon_mode:
+    result = subprocess.run(
+        ["julia", "-e", "using DaemonMode; runargs()", "solutionEvaluation.jl"],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"Error running Daemon Julia script: {result.stderr}")
+    else:
+        print(result)
+
+    if result.stderr.startswith("Error, cannot connect with server."):
+        # Start the persistant Julia Daemon process
+        DETACHED_PROCESS = 0x00000008
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
+        
+        # The following command starts a persistant Julia REPL server in the background
+        # Need to first execute ```using Pkg Pkg.add("DaemonMode")``` once, to globaly download the DaemonMode package
+
+        process = subprocess.Popen(
+            ["julia", "-e", "using DaemonMode; serve(3000, true; print_stack=true);"],
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        print(f"Started Julia Daemon with PID: {process.pid}")
+
+        # Try to run the script again
+        result = subprocess.run(
+            ["julia", "-e", "using DaemonMode; runargs()", "solutionEvaluation.jl"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print(f"Error running Daemon Julia script: {result.stderr}")
+        else:
+            print(result.stdout)
+else:
+    jl = Julia(compiled_modules=False)
+    Main.include("solutionEvaluation.jl")
+
+end_time = time.time()
+print(f"Julia initialization time: {end_time - start_time:.2f} seconds")
 
 #dimenzije ploce
 dimenzije=1000
-debljina_crte=1
+debljina_crte=2
 
 kutevi=[0] * 9
 
@@ -35,9 +86,7 @@ def upis_koordinata():
         text2.insert(0, str(yy))
         text3.insert(0, str(kutevi[selected]))
     except ValueError:
-            pass
-    
-    
+        pass
 
 def mapa_boja():
     boje={}
@@ -45,10 +94,10 @@ def mapa_boja():
     for i in range(1,9):
         boje["line"+str(i)]="blue"
 
-    boje[f"line{radio_var.get()}"]="yellow"
+    boje[f"line{radio_var.get()}"]="green"
     
     return boje
-    
+
 def draw_line_at_angle(canvas, x, y, angle, linetag):
     """
     Draws a line on the canvas at a specific angle.
@@ -74,7 +123,6 @@ def draw_line_at_angle(canvas, x, y, angle, linetag):
     canvas.create_line(x1, y1, x2, y2, fill=mapa_boja()[linetag], width=debljina_crte, tags=linetag)
     upis_koordinata()
 
-
 def on_enter(event):
 
     selected=radio_var.get()
@@ -89,8 +137,6 @@ def on_enter(event):
 
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
 
-
-
 def on_canvas_click(event):
     # Get selected radio button index
     selected = radio_var.get()
@@ -103,9 +149,6 @@ def on_canvas_click(event):
     canvas.delete(linetag)
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
     upis_koordinata()
-
-
-
 
 def on_mouse_wheel(event):
     """Handle mouse wheel scrolling."""
@@ -141,14 +184,11 @@ def on_select():#it doesnt have event
             pass
     upis_koordinata()
 
-    
-
 def ispis():
     # No longer needs its own button
     filename="solution.txt"
 
     with open(filename, 'w') as file:
-        # Write a single float number
         file.write(f"{3.33}\n")  # bezveze broj jer takav je tvoj format ucitavanja
 
         # Write up to 9 lines of 3 float numbers separated by space
@@ -156,31 +196,61 @@ def ispis():
             linetag = f"line{i}"
             try:
                 x1, y1, x2, y2 = canvas.coords(linetag)
-                #xx = (x1 + x2) / 2
-                #yy = (y1 + y2) / 2
-                x, y, kut= x1/dimenzije*20, (dimenzije-y1)/dimenzije*20, kutevi[i]/360*2*math.pi#ovak mora bit jer autizam sastavljaca
+                x, y, kut= x1/dimenzije*20, (dimenzije-y1)/dimenzije*20, kutevi[i]/360*2*math.pi #ovak mora bit jer autizam sastavljaca
                 numbers = f"{round(x, 6)} {round(y, 6)} {round(kut, 6)}"
                 file.write(numbers + '\n')
             except ValueError:
                 pass
 
 def evaluacija():
+    global old_image
     ispis()
-
     filename="solution.txt"
-    result, result_img = Main.evaluate_and_draw(filename)
-    
-    formatted_result = f"{float(result):.2f}"
+
+    if daemon_mode:
+        result = subprocess.run(
+            ["julia", "-e", "using DaemonMode; runexpr(\"evaluate_and_draw(\\\"solution.txt\\\")\")"],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            print(f"Error running Julia script: {result.stderr}")
+            return
+        
+        # print(result)
+
+        output_lines = result.stdout.strip().split('\n')
+        if len(output_lines) < 2 or output_lines[-1] == "0":
+            print("Unexpected output from Julia script: ", result.stdout)
+            return
+        else:
+            result_value = float(output_lines[-2])
+            result_img = output_lines[-1]
+    else:
+        result_value, result_img = Main.evaluate_and_draw(filename)
+
+    formatted_result = f"{result_value:.2f}"
     result_var.set(f"Result: {formatted_result}")
     print(formatted_result)
 
+    if result_img is None:
+        return
+
     # Update the image
-    new_image = Image.open(result_img)  # Replace with the path to your new image
+    new_image = Image.open(result_img)
     new_image = new_image.resize((dimenzije, dimenzije))  # Resize the image to fit the canvas
     global img  # Declare img as global to update it
     img = ImageTk.PhotoImage(new_image)
     canvas.itemconfig(image_on_canvas, image=img)
+    if old_image is not None:
+        os.remove(old_image)
+    old_image = result_img
 
+def cleanup():
+    if old_image is not None:
+        os.remove(old_image)
+    root.destroy()
 
 def move_selected_item(event):
     selected_index = radio_var.get()
@@ -201,6 +271,7 @@ def move_selected_item(event):
 # Create the main window
 root = tk.Tk()
 root.title("Mirror Placement")
+root.protocol("WM_DELETE_WINDOW", cleanup)  # Bind the cleanup function to the close event
 
 # Configure grid layout
 root.columnconfigure(0, weight=1)
@@ -212,9 +283,6 @@ root.rowconfigure(1, weight=1)  # Second row
 image = Image.open("baza.png")  # Replace with the path to your image
 image = image.resize((dimenzije, dimenzije))  # Resize the image to fit the canvas
 img = ImageTk.PhotoImage(image)
-
-
-
 
 # Create a frame for the text fields
 text_frame = ttk.Frame(root)

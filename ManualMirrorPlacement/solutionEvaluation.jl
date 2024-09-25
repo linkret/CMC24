@@ -10,7 +10,7 @@ function evaluate_and_draw(filename)
     best_score, cmc24_solution = load_solution_file(filename)
     lamp, mirrors = load_solution(cmc24_solution, mirror_length)
     if !check_solution(temple, lamp, mirrors)
-        return 0
+        return 0, nothing
     end
     
     # compute the ray path
@@ -24,6 +24,8 @@ function evaluate_and_draw(filename)
     
     # create the presentation plot
     img_file = cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+    println(score_percent)
+    println(img_file)
 
     return score_percent, img_file
 end
