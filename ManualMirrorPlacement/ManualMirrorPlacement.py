@@ -141,7 +141,9 @@ def on_enter(event):
     y=float( text2.get() )
     kutevi[selected]=float(text3.get())
 
-    draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
+    
+
+    draw_line_at_angle(canvas, x/20*dimenzije, dimenzije- y/20*dimenzije, kutevi[selected], linetag)
 
 def on_canvas_click(event):
     # Get selected radio button index
