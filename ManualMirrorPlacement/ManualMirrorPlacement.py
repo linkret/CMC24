@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+from tkinter import filedialog
 import math
 import sys
 import time
@@ -121,6 +122,7 @@ def draw_line_at_angle(canvas, x, y, angle, linetag):
     y2 = y - length/2 * math.sin(angle_rad)  # Subtract y because canvas Y-axis is inverted
 
     # Draw the line using the calculated points
+    canvas.delete(linetag)
     canvas.create_line(x1, y1, x2, y2, fill=mapa_boja()[linetag], width=debljina_crte, tags=linetag)
     upis_koordinata()
 
@@ -129,12 +131,10 @@ def on_enter(event):
     selected=radio_var.get()
 
     linetag="line"+str(selected)
-
-    canvas.delete(linetag)
     
     x=float(text1.get())
     y=float( text2.get() )
-    kutevi[selected]=float( text3.get() )
+    kutevi[selected]=float(text3.get())
 
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
 
@@ -147,7 +147,6 @@ def on_canvas_click(event):
     # Get the mouse click position (event.x, event.y)
     x, y = event.x, event.y
 
-    canvas.delete(linetag)
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
     upis_koordinata()
 
@@ -167,7 +166,6 @@ def on_mouse_wheel(event):
     else:  # Scroll down
         kutevi[selected]=(kutevi[selected]-2+360)%360
 
-    canvas.delete(linetag)
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
     upis_koordinata()
 
@@ -244,12 +242,45 @@ def evaluacija():
     global img  # Declare img as global to update it
     img = ImageTk.PhotoImage(new_image)
     canvas.itemconfig(image_on_canvas, image=img)
-    if old_image is not None:
+    if old_image is not None and os.path.exists(old_image):
         os.remove(old_image)
     old_image = result_img
 
+def load_file():
+    filename = filedialog.askopenfilename(
+        title="Select a file",
+        filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
+    )
+
+    with open(filename, 'r') as file:
+        initial_number = float(file.readline().strip())  # Read the initial number
+
+        i = 0
+        while True:
+            linetag = f"line{i}"
+            line = file.readline().strip()
+            if not line:
+                break
+
+            x, y, kut = map(float, line.split())
+            x1 = x / 20 * dimenzije
+            y1 = dimenzije - (y / 20 * dimenzije)
+            x2 = x1 + (0.5/2 * math.cos(kut)) / 20 * dimenzije
+            y2 = y1 - (0.5/2 * math.sin(kut)) / 20 * dimenzije
+            x = (x1 + x2) / 2
+            y = (y1 + y2) / 2
+            
+            angle = kut / (2 * math.pi) * 360
+            kutevi[i] = angle
+
+            draw_line_at_angle(canvas, x, y, angle, linetag)
+
+            i += 1
+        
+        evaluacija()
+
 def cleanup():
-    if old_image is not None:
+    if old_image is not None and os.path.exists(old_image):
         os.remove(old_image)
     root.destroy()
 
@@ -344,6 +375,9 @@ result_label.pack(pady=10)
 
 evaluiraj_button = ttk.Button(radio_frame, text="Evaluiraj", command=evaluacija)
 evaluiraj_button.pack(pady=10)  # Add some padding for aesthetics
+
+loadaj_button = ttk.Button(radio_frame, text="Load File", command=load_file)
+loadaj_button.pack(pady=10)
 
 # Run the main loop
 root.mainloop()
