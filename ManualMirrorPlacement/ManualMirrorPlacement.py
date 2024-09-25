@@ -12,6 +12,8 @@ from julia import Julia
 from julia import Main
 
 old_image = None
+curr_score = 0.0
+
 start_time = time.time()
 
 daemon_mode = '-d' in sys.argv
@@ -184,12 +186,9 @@ def on_select():#it doesnt have event
             pass
     upis_koordinata()
 
-def ispis():
-    # No longer needs its own button
-    filename="solution.txt"
-
+def ispis(filename="solution.txt"):
     with open(filename, 'w') as file:
-        file.write(f"{3.33}\n")  # bezveze broj jer takav je tvoj format ucitavanja
+        file.write(f"{curr_score}\n") # will be wrong on evaluacija() calls, but doesn't matter
 
         # Write up to 9 lines of 3 float numbers separated by space
         for i in range(9):
@@ -202,8 +201,17 @@ def ispis():
             except ValueError:
                 pass
 
+def save_file():
+    filename = filedialog.asksaveasfilename(
+        title="Save file",
+        filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
+    )
+
+    if filename:
+        ispis(filename)
+
 def evaluacija():
-    global old_image
+    global old_image, curr_score
     ispis()
     filename="solution.txt"
 
@@ -232,6 +240,7 @@ def evaluacija():
 
     formatted_result = f"{result_value:.2f}"
     result_var.set(f"Result: {formatted_result}")
+    curr_score = result_value
     print(formatted_result)
 
     if result_img is None:
@@ -254,7 +263,7 @@ def load_file():
     )
 
     with open(filename, 'r') as file:
-        initial_number = float(file.readline().strip())  # Read the initial number
+        initial_number = float(file.readline().strip())
 
         i = 0
         while True:
@@ -379,6 +388,9 @@ evaluiraj_button.pack(pady=10)  # Add some padding for aesthetics
 
 loadaj_button = ttk.Button(radio_frame, text="Load File", command=load_file)
 loadaj_button.pack(pady=10)
+
+save_button = ttk.Button(radio_frame, text="Save File", command=save_file)
+save_button.pack(pady=10)
 
 # Run the main loop
 root.mainloop()
