@@ -24,7 +24,8 @@ if daemon_mode:
     if result.returncode != 0:
         print(f"Error running Daemon Julia script: {result.stderr}")
     else:
-        print(result)
+        # print(result)
+        pass
 
     if result.stderr.startswith("Error, cannot connect with server."):
         # Start the persistant Julia Daemon process
