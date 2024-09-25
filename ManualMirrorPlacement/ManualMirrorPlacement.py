@@ -55,7 +55,8 @@ if daemon_mode:
         if result.returncode != 0:
             print(f"Error running Daemon Julia script: {result.stderr}")
         else:
-            print(result.stdout)
+            # print(result.stdout)
+            pass
 else:
     jl = Julia(compiled_modules=False)
     Main.include("solutionEvaluation.jl")
