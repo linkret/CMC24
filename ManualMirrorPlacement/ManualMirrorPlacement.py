@@ -18,6 +18,11 @@ start_time = time.time()
 
 daemon_mode = '-d' in sys.argv
 
+#dimenzije ploce
+dimenzije=1000
+debljina_crte=4
+kutevi=[0] * 9
+
 if daemon_mode:
     result = subprocess.run(
         ["julia", "-e", "using DaemonMode; runargs()", "solutionEvaluation.jl"],
@@ -66,11 +71,6 @@ else:
 end_time = time.time()
 print(f"Julia initialization time: {end_time - start_time:.2f} seconds")
 
-#dimenzije ploce
-dimenzije=1000
-debljina_crte=2
-
-kutevi=[0] * 9
 
 def upis_koordinata():
     selected = radio_var.get()
@@ -85,10 +85,12 @@ def upis_koordinata():
         x1, y1, x2, y2 = canvas.coords(linetag)
         xx = (x1 + x2) / 2
         yy = (y1 + y2) / 2
+
+        x, y, kut= xx/dimenzije*20, (dimenzije-yy)/dimenzije*20, kutevi[i]/360*2*math.pi #ovak mora bit jer autizam sastavljaca
         
         # Insert new text
-        text1.insert(0, str(xx))
-        text2.insert(0, str(yy))
+        text1.insert(0, str(x))
+        text2.insert(0, str(y))
         text3.insert(0, str(kutevi[selected]))
     except ValueError:
         pass
@@ -99,7 +101,7 @@ def mapa_boja():
     for i in range(1,9):
         boje["line"+str(i)]="blue"
 
-    boje[f"line{radio_var.get()}"]="green"
+    boje[f"line{radio_var.get()}"]="yellow"
     
     return boje
 
@@ -165,9 +167,9 @@ def on_mouse_wheel(event):
 
     # Scroll up or down depending on the direction of the scroll
     if event.delta > 0:  # Scroll up
-        kutevi[selected]=(kutevi[selected]+2+360)%360
+        kutevi[selected]=(kutevi[selected]+1+360)%360
     else:  # Scroll down
-        kutevi[selected]=(kutevi[selected]-2+360)%360
+        kutevi[selected]=(kutevi[selected]-1+360)%360
 
     draw_line_at_angle(canvas, x, y, kutevi[selected], linetag)
     upis_koordinata()
@@ -204,6 +206,7 @@ def ispis(filename="solution.txt"):
 def save_file():
     filename = filedialog.asksaveasfilename(
         title="Save file",
+        defaultextension=".txt",
         filetypes=(("Text files", "*.txt"), ("All files", "*.*"))
     )
 
@@ -263,8 +266,12 @@ def load_file():
     )
 
     with open(filename, 'r') as file:
+
         initial_number = float(file.readline().strip())
 
+        for i in range(9):
+            canvas.delete(f"line{i}")
+        
         i = 0
         while True:
             linetag = f"line{i}"
@@ -277,17 +284,20 @@ def load_file():
             y1 = dimenzije - (y / 20 * dimenzije)
             x2 = x1 + (0.5/2 * math.cos(kut)) / 20 * dimenzije
             y2 = y1 - (0.5/2 * math.sin(kut)) / 20 * dimenzije
-            x = (x1 + x2) / 2
-            y = (y1 + y2) / 2
+            #x = (x1 + x2) / 2
+            #y = (y1 + y2) / 2
             
             angle = kut / (2 * math.pi) * 360
             kutevi[i] = angle
 
-            draw_line_at_angle(canvas, x, y, angle, linetag)
-
+            draw_line_at_angle(canvas, x2, y2, angle, linetag)
+            
             i += 1
+        upis_koordinata()
         
-        evaluacija()
+        evaluacija()#evaluacija mora bit prva jer ak je druga prebrise nacrtano
+
+        
 
 def cleanup():
     if old_image is not None and os.path.exists(old_image):
