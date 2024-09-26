@@ -6,6 +6,7 @@ using ProfileView
 using Base.Iterators: drop
 
 include("cmc24.jl")
+include("fast_eval.jl")
 
 MIRRORS = 8
 PULL_OUT_L = 0.5
@@ -25,7 +26,7 @@ function generate_segment()
     end
     
     # Randomly select an initial angle as e = [cos(α), sin(α)]
-    angle = rand() * 360.0 * π / 180
+    angle = rand() * 2 * π
     e = [cos(angle), sin(angle)]
     
     ray = (v, e)
