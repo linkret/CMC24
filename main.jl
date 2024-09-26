@@ -222,14 +222,14 @@ function generate_greedy_solution()
         mirror, okay = place_mirror(end_point, mirror_angle, rays, my_solution)
         if !okay
             println("Could not place mirror ", i)
-            return []
+            return [], []
         end
         my_solution = vcat(my_solution, [mirror[1] mirror[2] mirror_angle])
     end
     end # @time
     println("Time to greedily generate: ", tinfo.time, " s")
 
-    return my_solution
+    return my_solution, rays
 end
 
 function calculate_solution_length(solution)
@@ -243,9 +243,21 @@ function calculate_solution_length(solution)
     return sum
 end
 
-# Profile.clear()
-# @profile begin
-# elapsed_time = @elapsed begin
+function fast_eval(rays)
+    tinfo = @timed begin
+    reset(temple)
+    end
+    println("Time to reset: ", tinfo.time, " s")
+    for i in eachindex(rays[1:end-1])
+        ray = rays[i]
+        nxt_ray = rays[i + 1]
+        draw_ray(ray[1][1], ray[1][2], nxt_ray[1][1], nxt_ray[1][2], 1, false)
+    end
+    dist = temple_ray_intersection(temple, rays[end])
+    collision_point = rays[end][1] + rays[end][2] * dist
+    draw_ray(rays[end][1][1], rays[end][1][2], collision_point[1], collision_point[2], 1, true) # draw last ray that collides with temple
+    return fast_score()
+end
 
 # Random.seed!(0) # for reproducibility in Debug
 
@@ -254,24 +266,30 @@ best_score = 0.0
 num_scores = 0.0
 num_valid_scores = 0.0
 
+draw_temple(temple) # for fast_eval
+
 while true
     global sum_scores, num_scores, num_valid_scores, best_score
-    my_solution = generate_greedy_solution()
+    my_solution, rays = generate_greedy_solution()
     if isempty(my_solution)
         continue # was invalid and quit early
     end
-    length = calculate_solution_length(my_solution)
-    println("Length: ", length) # try to figure out if there is a strong correlation between the length and the score # the correlation is sadly not super strong
-    
-    #tinfo = @timed begin
+
+    #length = calculate_solution_length(my_solution)
+    #println("Length: ", length) # the correlation is sadly not super strong
+
+    tinfo = @timed begin
     score = evaluate_solution(my_solution)
-    #end # @time
-    #println("Time to evaluate: ", tinfo.time, " s")
+    end # @time
+    println("Time to evaluate: ", tinfo.time, " s")
+
+    tinfo = @timed begin
+    fscore = fast_eval(rays) # for some reason this score is around 0.5% lower than the real score
+    end # @time
+    println("Fast score: ", fscore)
+    println("Our time to evaluate: ", tinfo.time, " s")
     
     num_scores += 1
-    if score > 0 && score < 20
-        break
-    end
 
     if score > 0 # could use > 5 to remove solutions where the Ray immediately hits a wrong mirror and then a wall
         best_score = max(best_score, score)
@@ -279,15 +297,6 @@ while true
         num_valid_scores += 1
     end
     
-    println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
-
-    # if num_valid_scores > 1 # break for the sake of profiling
-    #     break
-    # end
+    #println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
+    println("Average score: ", sum_scores / num_valid_scores, " Best score: ", best_score)
 end
-
-# end # elapsed_time
-# # ProfileView.view()
-# println("Elapsed time: ", elapsed_time)
-# end # profile
-# Profile.print()

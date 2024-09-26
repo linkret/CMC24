@@ -679,17 +679,12 @@ function evaluate_solution(cmc24_solution)
         cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
 
-    if score_percent < 20
-        cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
-    end
-
     # if score_percent < 20
     #     cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     # end
 
     return score_percent
 end
-
 
 test_solution = load_solution_file("best.txt")[2]
 temple = load_temple(temple_string, block_size)
