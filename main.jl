@@ -8,9 +8,9 @@ using Base.Iterators: drop
 include("cmc24.jl")
 include("fast_eval.jl")
 
-MIRRORS = 8
-PULL_OUT_L = 0.5
-PULL_OUT_M = 0.5 # 1.2 was probably too extreme
+const MIRRORS = 8
+const PULL_OUT_L = 0.5
+const PULL_OUT_M = 0.5 # 1.2 was probably too extreme
 
 """
     generate_segment()
@@ -69,7 +69,7 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, mirrors, banned_
         throw(ArgumentError("Input vector v must have length 2"))
     end
 
-    max_length = -1000
+    max_length = -1000.0
     max_ray = ([0, 0], [0, 0])
     max_endpoint = [0, 0]
 
@@ -78,8 +78,10 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, mirrors, banned_
     # We can use this to avoid any calls to temple_ray_intersection, which seems to be the bottleneck
     # This could allow us to try even more angles (finer angle-step), or more starting-points
 
-    # radians from 0 to 2π, steps of 1 
-    for e in 0:1:359
+    # Radians from 0 to 2π, steps of 1     
+    # step = (length(rays) == MIRRORS) ? 0.5 : 1.0 # if we are generating the last ray, we can use a smaller step
+    step = 1
+    for e in 0:step:359
         a = deg2rad(e)
         
         if banned_angle != -1.0
@@ -116,15 +118,17 @@ function longest_segment_from_point(v::Array{Float64, 1}, rays, mirrors, banned_
             end
         end
 
-        collision_point = ray[1] + ray[2] * dist
+        endpoint = ray[1] + ray[2] * dist
 
-        score_noise = 0 # rand() * 0.4 - 0.2 # seems to not help. And bigger noise is even worse
-        score = dist - intersections * 1.2 + score_noise # penalty for every intersection, plus random noise
+        #score = dist - intersections * 1.2 + score_noise # penalty for every intersection, plus random noise
+        draw_ray(ray[1][1], ray[1][2], endpoint[1], endpoint[2], 1, false)
+        score = fast_score()
         if score > max_length
             max_length = score
             max_ray = (v, ray[2])
-            max_endpoint = collision_point
+            max_endpoint = endpoint
         end
+        draw_ray(ray[1][1], ray[1][2], endpoint[1], endpoint[2], -1, false)
     end
     
     return (max_ray, max_length, max_endpoint)
@@ -195,6 +199,7 @@ function generate_greedy_solution()
 
     ray, len, endpoint = generate_long_segment()
     push!(rays, ray)
+    draw_ray(ray[1][1], ray[1][2], endpoint[1], endpoint[2], 1, false)
     
     my_solution = Matrix{Float64}(undef, 0, 3)
 
@@ -207,6 +212,8 @@ function generate_greedy_solution()
         banned_angle = atan(ray[1][2] - endpoint[2], ray[1][1] - endpoint[1])
         ray, len, endpoint = longest_segment_from_point(endpoint, rays, my_solution, banned_angle)
         push!(rays, ray)
+
+        draw_ray(ray[1][1], ray[1][2], endpoint[1], endpoint[2], 1, (i == MIRRORS))
 
         end_point = rays[i + 1][1]
         direction1 = rays[i][2]
@@ -244,10 +251,7 @@ function calculate_solution_length(solution)
 end
 
 function fast_eval(rays)
-    tinfo = @timed begin
     reset(temple)
-    end
-    println("Time to reset: ", tinfo.time, " s")
     for i in eachindex(rays[1:end-1])
         ray = rays[i]
         nxt_ray = rays[i + 1]
@@ -259,44 +263,42 @@ function fast_eval(rays)
     return fast_score()
 end
 
-# Random.seed!(0) # for reproducibility in Debug
+function main()
+    # Random.seed!(0) # for reproducibility in Debug
 
-sum_scores = 0.0
-best_score = 0.0
-num_scores = 0.0
-num_valid_scores = 0.0
+    sum_scores = 0.0
+    my_best_score = 0.0
+    num_scores = 0.0
+    num_valid_scores = 0.0
 
-draw_temple(temple) # for fast_eval
+    draw_temple(temple) # for fast_eval.jl
 
-while true
-    global sum_scores, num_scores, num_valid_scores, best_score
-    my_solution, rays = generate_greedy_solution()
-    if isempty(my_solution)
-        continue # was invalid and quit early
+    while true
+        reset(temple) # for fast_eval.jl
+        my_solution, rays = generate_greedy_solution()
+        if isempty(my_solution)
+            continue # solution was invalid and quit early
+        end
+
+        # not 100% accurate
+        # score = fast_eval(rays) 
+        score = fast_score()
+        println("Score: ", score)
+        
+        num_scores += 1
+
+        if score > 0
+            if score > best_score[1]
+                score = evaluate_solution(my_solution) # 100% accurate
+            end
+            my_best_score = max(my_best_score, score)
+            sum_scores += score
+            num_valid_scores += 1
+        end
+        
+        #println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
+        println("Average score: ", sum_scores / num_valid_scores, " Best score: ", my_best_score)
     end
-
-    #length = calculate_solution_length(my_solution)
-    #println("Length: ", length) # the correlation is sadly not super strong
-
-    tinfo = @timed begin
-    score = evaluate_solution(my_solution)
-    end # @time
-    println("Time to evaluate: ", tinfo.time, " s")
-
-    tinfo = @timed begin
-    fscore = fast_eval(rays) # for some reason this score is around 0.5% lower than the real score
-    end # @time
-    println("Fast score: ", fscore)
-    println("Our time to evaluate: ", tinfo.time, " s")
-    
-    num_scores += 1
-
-    if score > 0 # could use > 5 to remove solutions where the Ray immediately hits a wrong mirror and then a wall
-        best_score = max(best_score, score)
-        sum_scores += score
-        num_valid_scores += 1
-    end
-    
-    #println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
-    println("Average score: ", sum_scores / num_valid_scores, " Best score: ", best_score)
 end
+
+main()

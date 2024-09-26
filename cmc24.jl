@@ -10,7 +10,7 @@ using UUIDs
 using DelimitedFiles
 using Profile
 
-temple_string =
+const temple_string =
 #1  2  3  4  5  6  7  8  9  0  1  2  3  4  5  6  7  8  9  0
 "O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O
  O  .  .  .  .  O  .  .  .  .  .  .  .  .  O  .  .  .  .  O
@@ -33,13 +33,13 @@ temple_string =
  O  .  .  .  .  O  .  .  .  .  .  .  .  .  O  .  .  .  .  O
  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O  O"
 
-block_size = 1
-mirror_length = 0.5
-light_halfwidth = 1
-ε = 1e-12
+const block_size = 1
+const mirror_length = 0.5
+const light_halfwidth = 1
+const ε = 1e-12
 
 """Float64 infinity"""
-∞ = Inf
+const ∞ = Inf
 
 """
     ⋅(v, w)
@@ -478,7 +478,7 @@ function raytrace(temple, lamp, mirrors)
     return path
 end
 
-function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing, downscale_factor=5.0)
+function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing, downscale_factor=1.0)
     plot_scale = 150 / downscale_factor # to speed up solution evaluation
     plot_size = plot_scale .* temple.shape 
     
@@ -653,6 +653,7 @@ function load_solution_file(filename::String)
 end
 
 function evaluate_solution(cmc24_solution)
+    global best_score
     # load the solution
     lamp, mirrors = load_solution(cmc24_solution, mirror_length)
     if !check_solution(temple, lamp, mirrors)
@@ -668,14 +669,15 @@ function evaluate_solution(cmc24_solution)
     score_percent = 100. * score / vacant
     println(stderr, "Your CMC24 score is $(commas(score)) / $(commas(vacant)) = $(100. * score / vacant) %.")
     
-    best_score, best_matrix = load_solution_file("best.txt")
-    if score_percent > best_score
+    # best_score[1], best_matrix = load_solution_file("best.txt")
+    if score_percent > best_score[1]
         println(stderr, "Congratulations! You have a new best score.")
         open("best.txt", "w") do io
             println(io, score_percent)
             writedlm(io, cmc24_solution)
         end
         
+        best_score[1] = score_percent
         cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
 
@@ -686,17 +688,12 @@ function evaluate_solution(cmc24_solution)
     return score_percent
 end
 
-test_solution = load_solution_file("best.txt")[2]
-temple = load_temple(temple_string, block_size)
-
-if isempty(temple)
-    println(stderr, "ERROR! The temple couldn't be loaded.")
-    finalize()
-    exit()
-end
-
-fplot1 = cmc24_plot(temple) # precompute the static base plot
-img1 = FileIO.load(fplot1) # preload the static base image
+const best_solution = load_solution_file("best.txt")
+const best_score = [best_solution[1]] # array to be mutable
+const temple = load_temple(temple_string, block_size)
+# TODO: this precompute can be moved to the point of first-use - there are rare cases we don't need it at all
+const fplot1 = cmc24_plot(temple) # precompute the static base plot
+const img1 = FileIO.load(fplot1) # preload the static base image
 
 # println("Current best solution: ")
 # evaluate_solution(test_solution)

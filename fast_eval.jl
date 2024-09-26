@@ -2,12 +2,12 @@ using Images
 using ColorTypes
 using LinearAlgebra
 
-downscale_factor = 5
-resolution::Int = 3000 / downscale_factor # 600x600 pixels for downscale_factor=5, 1500x1500 for df=2, 3000x3000 for df=1
-pixels = fill(UInt8(0), resolution, resolution)
+const downscale_factor = 5
+const resolution::Int = 3000 / downscale_factor # 600x600 pixels for downscale_factor=5, 1500x1500 for df=2, 3000x3000 for df=1
+const pixels::Array{UInt8, 2} = fill(UInt8(0), resolution, resolution)
 # 0 = white, 255 = blocked(wall), all other values = red
-total_white_pixels = resolution^2
-current_red_pixels = 0
+total_white_pixels::Int = resolution^2
+current_red_pixels::Int = 0
 
 function coord_to_pixel(coord)
     # coordinates are floats that go from [0,20], but pixels are ints from [1,resolution]
@@ -37,10 +37,10 @@ function draw_rectangle!(corners, color, set=false)
     corners = [[coord_to_pixel(c[1]), coord_to_pixel(c[2])] for c in corners]
 
     # Calculate the bounding box of the rectangle
-    min_x = floor(minimum(first.(corners)))
-    max_x = ceil(maximum(first.(corners)))
-    min_y = floor(minimum(last.(corners)))
-    max_y = ceil(maximum(last.(corners)))
+    min_x = floor(Int, minimum(first.(corners)))
+    max_x = ceil(Int, maximum(first.(corners)))
+    min_y = floor(Int, minimum(last.(corners)))
+    max_y = ceil(Int, maximum(last.(corners)))
 
     block_width = floor(Int, 1.0 / 20 * resolution) # 1.0 meters in pixels
 
@@ -89,7 +89,7 @@ end
 function draw_area_around_ray!(x1, y1, x2, y2, color=1)
     global current_red_pixels, pixels
 
-    x1, y1 = coord_to_pixel(x1), coord_to_pixel(y1)
+    x1, y1 = coord_to_pixel(x1), coord_to_pixel(y1) # TODO: verify if this is correct
     x2, y2 = coord_to_pixel(x2), coord_to_pixel(y2)
     radius = resolution * 1.0 / 20
 
@@ -119,7 +119,6 @@ function draw_circle(x1, y1, radius=1.0, color=1)
     # Draw a circle centered at (x1, y1) with radius `radius` and color `color`
     global current_red_pixels, pixels
 
-    # convert with coord_to_pixel(), also radius will be different in terms of pixels
     x1, y1 = coord_to_pixel(x1), coord_to_pixel(y1)
     radius = resolution * radius / 20
 
@@ -137,7 +136,7 @@ function draw_circle(x1, y1, radius=1.0, color=1)
             if (x - x1)^2 + (y - y1)^2 <= radius^2
                 current_red_pixels -= (pixels[x, y] != 0 && pixels[x, y] != 255)
 
-                pixels[x, y] += color # should be careful never to -1 a white pixel or it will underflow
+                pixels[x, y] += color
 
                 current_red_pixels += (pixels[x, y] != 0 && pixels[x, y] != 255)
             end
@@ -152,6 +151,11 @@ function is_inside_quadrilateral(point, corners)
     for i in 1:4
         x1, y1 = corners[i]
         x2, y2 = corners[mod1(i + 1, 4)]
+
+        # # Check if the point is exactly on the edge
+        # if (x2 - x1) * (y - y1) == (x - x1) * (y2 - y1) && min(x1, x2) <= x <= max(x1, x2) && min(y1, y2) <= y <= max(y1, y2)
+        #     return true
+        # end
 
         if y1 <= y
             if y2 > y && (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1) > 0
@@ -214,7 +218,7 @@ function reset(temple)
 end
 
 function fast_score()
-    return 100.0 * current_red_pixels / total_white_pixels
+    return 100.0 * current_red_pixels / total_white_pixels + 0.5 # 0.5 just in case, to still try official evaluate() if we're that close
 end
 
 function pixel_to_color(value)
