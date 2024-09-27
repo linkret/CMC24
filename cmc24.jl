@@ -3,12 +3,11 @@
 # Author: Hrvoje Abraham, hrvoje.abraham@avl.com
 
 using FileIO
-using ImageIO
-using Measures
 using Plots; gr()
-using UUIDs
+using Measures
 using DelimitedFiles
-using Profile
+
+import Base: hash
 
 const temple_string =
 #1  2  3  4  5  6  7  8  9  0  1  2  3  4  5  6  7  8  9  0
@@ -38,6 +37,74 @@ const mirror_length = 0.5
 const light_halfwidth = 1
 const ε = 1e-12
 
+const Point = Vector{Float64} # Type Alias for 2D points
+const Direction = Vector{Float64} # Type Alias for 2D direction vector
+
+struct Ray
+    point::Point
+    direction::Direction
+end
+
+struct Segment
+    point::Point
+    length::Float64
+    angle::Float64
+end
+
+struct Block
+    v1::Point # bottom left corner
+    v2::Point
+    v3::Point # up right corner
+    v4::Point
+
+    s1::Segment
+    s2::Segment
+    s3::Segment
+    s4::Segment
+end
+
+function hash(b::Block, h::UInt)::UInt
+    h = hash(b.v1, h)
+    h = hash(b.v2, h)
+    h = hash(b.v3, h)
+    h = hash(b.v4, h)
+    # Should be enough to hash the block by its vertices
+    return h
+end
+
+struct Temple
+    blocks::Set{Block}
+    shape::Tuple{Int64, Int64}
+    size::Tuple{Int64, Int64}
+    grid::Vector{Vector{Union{Block, Nothing}}}
+end
+
+function hash(t::Temple, h::UInt)::UInt
+    h = hash(t.blocks, h)
+    h = hash(t.shape, h)
+    return h
+end
+
+struct Mirror 
+    v1::Point
+    v2::Point
+    s::Segment
+    α::Float64
+    e::Direction
+    n::Direction
+end
+
+struct Lamp
+    v::Point
+    α::Float64
+    e::Direction
+end
+
+struct Path
+    points::Vector{Point}
+    directions::Vector{Direction}
+end
+
 """Float64 infinity"""
 const ∞ = Inf
 
@@ -46,7 +113,7 @@ const ∞ = Inf
 
 Dot product of two 2D vectors.
 """
-function ⋅(v, w)
+function ⋅(v, w)::Float64
     return v[1] * w[1] + v[2] * w[2]
 end
 
@@ -55,12 +122,12 @@ end
 
 Cross product of two 2D vectors.
 """
-function ×(v, w)
+function ×(v, w)::Float64
     return v[1] * w[2] - v[2] * w[1]
 end
 
 """Last 12 digits of hexadecimal format of the input integer."""
-function hex12(x::Integer)
+function hex12(x::Integer)::String
     return last(string(x, base=16), 12)
 end
 
@@ -69,40 +136,39 @@ end
 
     E.g. 1234567 => "1,234,567"
 """
-function commas(num::Integer)
+function commas(num::Integer)::String
     str = string(num)
     return replace(str, r"(?<=[0-9])(?=(?:[0-9]{3})+(?![0-9]))" => ",")
 end
 
-function load_temple(temple_string, block_size)
+function load_temple(temple_string::String, block_size::Int64)::Temple
     # println(stderr, " " * temple_string)
     rows = split(replace(strip(temple_string), " " => ""), '\n')
     temple_shape = length(rows[1]), length(rows)
     grid = []
 
-    temple = Set()
+    temple = Set{Block}()
     for (j, row) ∈ enumerate(rows)
-        grid_row = []
+        grid_row = Vector{Union{Block, Nothing}}()
         for (i, c) ∈ enumerate(row)
             if c == 'O'
                 x = (i - 1) * block_size
                 y = temple_shape[2] - j * block_size
                 
-                v1 = [x, y]
-                v2 = [x + block_size, y]
-                v3 = [x + block_size, y + block_size]
-                v4 = [x, y + block_size]
+                v1::Point = [x, y]
+                v2::Point = [x + block_size, y]
+                v3::Point = [x + block_size, y + block_size]
+                v4::Point = [x, y + block_size]
 
-                block = (
-                    v1 = v1,  # bottom left corner
-                    v2 = v2,
-                    v3 = v3,  # up right corner
-                    v4 = v4,
-
-                    s1 = (v1, block_size, 0),
-                    s2 = (v2, block_size, π/2),
-                    s3 = (v3, block_size, π),
-                    s4 = (v4, block_size, 3π/2),
+                block = Block(
+                    v1,
+                    v2,
+                    v3,
+                    v4,
+                    Segment(v1, block_size, 0),
+                    Segment(v2, block_size, π/2),
+                    Segment(v3, block_size, π),
+                    Segment(v4, block_size, 3π/2),
                 )
                 
                 push!(temple, block)
@@ -116,15 +182,15 @@ function load_temple(temple_string, block_size)
 
     println(stderr, "The temple of size $temple_shape is loaded.")
 
-    return (
-        blocks = temple,
-        shape = temple_shape,
-        size = block_size .* temple_shape,
-        grid = grid
+    return Temple(
+        temple,
+        temple_shape,
+        block_size .* temple_shape,
+        grid
     )
 end
 
-function load_solution(cmc24_solution, mirror_length)
+function load_solution(cmc24_solution::Matrix{Float64}, mirror_length::Float64)::Tuple{Lamp, Vector{Mirror}}
     if size(cmc24_solution) ≠ (9, 3)
         println(stderr, "ERROR! The solution isn't 9x3 size matrix.")
         finalize()
@@ -147,28 +213,28 @@ function load_solution(cmc24_solution, mirror_length)
 
     # preprocess the lamp
     α = cmc24_solution[1, 3]
-    lamp = (
-        v = cmc24_solution[1, 1:2],
-        α = α,
-        e = [cos(α), sin(α)]
+    lamp = Lamp(
+        cmc24_solution[1, 1:2],
+        α,
+        [cos(α), sin(α)]
     )
 
     # preprocess the mirrors
-    mirrors = []
+    mirrors = Vector{Mirror}()
     for m ∈ 1 : 8
         α = cmc24_solution[m + 1, 3]
         
-        v = cmc24_solution[m + 1, 1:2]
-        e = [cos(α),  sin(α)]
-        n = [-sin(α), cos(α)]  # normal
+        v::Point = cmc24_solution[m + 1, 1:2]
+        e::Direction = [cos(α),  sin(α)]
+        n::Direction = [-sin(α), cos(α)]  # normal
 
-        mirror = (
-            v1 = v,
-            v2 = v + mirror_length * e,
-            s = (v, mirror_length, α),
-            α = α,
-            e = e,
-            n = n,
+        mirror = Mirror(
+            v,
+            v + mirror_length * e,
+            Segment(v, mirror_length, α),
+            α,
+            e,
+            n,
         )
 
         push!(mirrors, mirror)
@@ -179,11 +245,11 @@ function load_solution(cmc24_solution, mirror_length)
     return (lamp, mirrors)
 end
 
-function point_in_block(point, block)
+function point_in_block(point::Point, block::Union{Block, Nothing})::Bool
     return block ≠ nothing && all(block.v1 .≤ point .≤ block.v3);
 end
 
-function point_in_temple(temple, point)
+function point_in_temple(temple::Temple, point::Point)::Bool
     #for cell ∈ temple.blocks
         cell = block_from_point(temple, point)
         # if the point is within bottom-left and top-right vertex
@@ -195,22 +261,25 @@ function point_in_temple(temple, point)
     return false
 end
 
-function block_from_point(temple, point)
+function block_from_point(temple::Temple, point::Point)::Union{Block, Nothing}
     x = floor(Int, point[1])
     y = floor(Int, point[2])
     return temple.grid[y + 1][x + 1]
 end
 
-function point_sector(temple, point)
+function point_sector(temple::Temple, point::Point)::Int
     sx = floor(Int, 3 * point[1] / temple.size[1])
     sy = floor(Int, 3 * point[2] / temple.size[2])
 
     return 3 * sy + sx + 1
 end
 
-function ray_ray_intersection(ray1, ray2)
-    (p, r) = ray1
-    (q, s) = ray2
+function ray_ray_intersection(ray1::Ray, ray2::Ray)::Tuple{Int, Float64, Float64}
+    p = ray1.point
+    r = ray1.direction
+    
+    q = ray2.point
+    s = ray2.direction
 
     rs = r × s
     qpr = (q - p) × r
@@ -224,7 +293,7 @@ function ray_ray_intersection(ray1, ray2)
 
     # CASE 2 - rays are parallel so they don't intersect
     if (rs == 0) && (qpr ≠ 0)
-        return (2, 0, 0)
+        return (2, 0.0, 0.0)
     end
 
     # CASE 3 - rays intersect
@@ -236,42 +305,51 @@ function ray_ray_intersection(ray1, ray2)
     end
 
     # CASE 4 - rays don't intersect
-    return (4, 0, 0)
+    return (4, 0.0, 0.0)
 end
 
-function ray_segment_intersection(ray, segment)
-    (p, r) = ray
-    (q, l, β) = segment
+function ray_segment_intersection(ray::Ray, segment::Segment)::Tuple{Int, Float64, Float64}
+    p = ray.point
+    r = ray.direction
+    
+    q = segment.point
+    l = segment.length
+    β = segment.angle
 
     s = l * [cos(β), sin(β)]
 
-    (case, t, u) = ray_ray_intersection((p, r), (q, s))
+    (case, t, u) = ray_ray_intersection(ray, Ray(q, s))
 
     # CASE 1 - No intersection
-    if case == 1 && t < 0 && u < 0            return (1, 0, 0) end
-    if case == 2                              return (1, 0, 0) end
-    if case == 3 && (t ≤ 0 || u < 0 || u > 1) return (1, 0, 0) end
-    if case == 4                              return (1, 0, 0) end
+    if case == 1 && t < 0 && u < 0            return (1, 0., 0.) end
+    if case == 2                              return (1, 0., 0.) end
+    if case == 3 && (t ≤ 0 || u < 0 || u > 1) return (1, 0., 0.) end
+    if case == 4                              return (1, 0., 0.) end
 
     # CASE 2 - Ray and segment are collinear and they intersect
     if case == 1
-        if t > 0 && u ≥ 0 return (2, min(t, u), 0) end
-        if t ≥ 0          return (2, t, 0)         end
-        if u ≥ 0          return (2, 0, 0)         end
+        if t > 0 && u ≥ 0 return (2, min(t, u), 0.) end
+        if t ≥ 0          return (2, t, 0.)         end
+        if u ≥ 0          return (2, 0., 0.)        end
     end
 
     # CASE 3 - Ray and segment intersect in ordinary way
     return (3, t, u)
 end
 
-function segment_segment_intersection(segment1, segment2)
-    (p, la, α) = segment1
-    (q, lb, β) = segment2
+function segment_segment_intersection(segment1::Segment, segment2::Segment)::Bool
+    p = segment1.point
+    la = segment1.length
+    α = segment1.angle
+    
+    q = segment2.point
+    lb = segment2.length
+    β = segment2.angle
 
     r = la * [cos(α), sin(α)]
     s = lb * [cos(β), sin(β)]
 
-    (case, t, u) = ray_ray_intersection((p, r), (q, s))
+    (case, t, u) = ray_ray_intersection(Ray(p, r), Ray(q, s))
 
     if case == 1 && r ⋅ s > 0 && t ≤ u && (0 ≤ t ≤ 1 || 0 ≤ u ≤ 1)
         return true
@@ -296,7 +374,7 @@ function segment_segment_intersection(segment1, segment2)
     return false
 end
 
-function segment_block_intersection(segment, block)
+function segment_block_intersection(segment::Segment, block::Block)::Bool
     return any((
         #point_in_block(segment[1], block),
         #point_in_block(segment[1] + segment[2] * [cos(segment[3]), sin(segment[3])], block),
@@ -307,22 +385,22 @@ function segment_block_intersection(segment, block)
     ))
 end
 
-function temple_segment_intersection(temple, segment)
+function temple_segment_intersection(temple::Temple, segment::Segment)::Bool
     return any(segment_block_intersection(segment, block) for block ∈ temple.blocks)
 end
 
-function euclidean_distance(p1, p2)
+function euclidean_distance(p1::Point, p2::Point)::Float64
     return hypot(p1[1] - p2[1], p1[2] - p2[2])
 end
 
-function temple_ray_intersection(temple, ray)
+function temple_ray_intersection(temple::Temple, ray::Ray)::Float64
     t_min = ∞
     for block ∈ temple.blocks
         t_approx = min(
-            euclidean_distance(ray[1], block.v1),
-            euclidean_distance(ray[1], block.v2),
-            euclidean_distance(ray[1], block.v3),
-            euclidean_distance(ray[1], block.v4)
+            euclidean_distance(ray.point, block.v1),
+            euclidean_distance(ray.point, block.v2),
+            euclidean_distance(ray.point, block.v3),
+            euclidean_distance(ray.point, block.v4)
         )
 
         if t_approx > t_min
@@ -331,28 +409,28 @@ function temple_ray_intersection(temple, ray)
 
         # only check the blocks that are in the direction of the ray's origin. Over 50% speedup over checking all 4 block segments
 
-        if ray[1][2] <= block.s1[1][2]
+        if ray.point[2] <= block.s1.point[2]
             (case, t, u) = ray_segment_intersection(ray, block.s1)
             if (case == 2 || case == 3) && (t < t_min) && (t > ε)
                 t_min = t
             end
         end
 
-        if ray[1][1] >= block.s2[1][1]
+        if ray.point[1] >= block.s2.point[1]
             (case, t, u) = ray_segment_intersection(ray, block.s2)
             if (case == 2 || case == 3) && (t < t_min) && (t > ε)
                 t_min = t
             end
         end
 
-        if ray[1][2] >= block.s3[1][2]
+        if ray.point[2] >= block.s3.point[2]
             (case, t, u) = ray_segment_intersection(ray, block.s3)
             if (case == 2 || case == 3) && (t < t_min) && (t > ε)
                 t_min = t
             end
         end
 
-        if ray[1][1] <= block.s4[1][1]
+        if ray.point[1] <= block.s4.point[1]
             (case, t, u) = ray_segment_intersection(ray, block.s4)
             if (case == 2 || case == 3) && (t < t_min) && (t > ε)
                 t_min = t
@@ -367,7 +445,7 @@ function temple_ray_intersection(temple, ray)
     return t_min
 end
 
-function check_solution(temple, lamp, mirrors)
+function check_solution(temple::Temple, lamp::Lamp, mirrors::Vector{Mirror})::Bool
     # check the lamp is within the temple
     if !all([0, 0] .≤ lamp.v .≤ temple.size)
         println(stderr, "ERROR! The lamp isn't placed within temple limits which is of size $(temple.size).")
@@ -427,20 +505,20 @@ function check_solution(temple, lamp, mirrors)
     return true
 end
 
-function raytrace(temple, lamp, mirrors)
+function raytrace(temple::Temple, lamp::Lamp, mirrors::Vector{Mirror})::Path
     local hit_mirror
 
-    path = (
-        points=[lamp.v],
-        directions=[],
+    path = Path(
+        [lamp.v],
+        []
     )
 
-    ray = (
-        v = lamp.v,
-        e = lamp.e
+    ray = Ray(
+        lamp.v,
+        lamp.e
     )
 
-    hit_mirrors = []
+    hit_mirrors = Vector{Int}()
     while true
         # check if ray can hit some mirror
         t_mirror = ∞
@@ -458,15 +536,15 @@ function raytrace(temple, lamp, mirrors)
 
         # closest hit point
         t = min(t_mirror, t_temple)
-        hitting_point = ray.v + t * ray.e
-        push!(path.directions, ray.e)
+        hitting_point = ray.point + t * ray.direction
+        push!(path.directions, ray.direction)
         push!(path.points, hitting_point)
 
         # ray hit a mirror, calculate new direction
         if t_mirror < t_temple
-            ray = (
-                v = hitting_point,
-                e = ray.e - 2 * (ray.e ⋅ hit_mirror.n) * hit_mirror.n
+            ray = Ray(
+                hitting_point,
+                ray.direction - 2 * (ray.direction ⋅ hit_mirror.n) * hit_mirror.n
             )
             continue
         end
@@ -478,10 +556,29 @@ function raytrace(temple, lamp, mirrors)
     return path
 end
 
-function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing, downscale_factor=1.0)
+function consistent_hash(args...) # probably dont need this
+    # Replace `nothing` with a consistent placeholder value
+    args = map(x -> x === nothing ? :nothing_placeholder : x, args)
+    return hash(args)
+end
+
+function cmc24_plot(
+    temple::Temple; 
+    lamp::Union{Lamp, Nothing}=nothing, 
+    mirrors::Union{Vector{Mirror}, Nothing}=nothing, 
+    path::Union{Path, Nothing}=nothing, 
+    downscale_factor::Float64=1.0
+)::String
     plot_scale = 150 / downscale_factor # to speed up solution evaluation
     plot_size = plot_scale .* temple.shape 
     
+    solution_hash = hex12(consistent_hash([temple, lamp, mirrors, path]))
+    filename = "cmc24_solution_" * solution_hash * ".png"
+
+    if isfile(filename)
+        return filename # It's already plotted
+    end
+
     plot(
         size = plot_size,
         xlims = (0, temple.size[1]),
@@ -502,8 +599,6 @@ function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing, downsca
         θ = LinRange(0, 2π, n+1)
         return Shape(x .+ r*cos.(θ), y .+ r*sin.(θ))
     end
-
-    # TODO: try to copy fplot1 into this, so only the path and mirrors need to be additionally plotted
     
     # plot the lightened area
     if path ≠ nothing
@@ -587,16 +682,12 @@ function cmc24_plot(temple; lamp=nothing, mirrors=nothing, path=nothing, downsca
         )
     end
     
-    solution_hash = hex12(hash([temple, lamp, mirrors, path]))
-    # uuid = hex12(UUIDs.uuid4().value) # don't need this
-    # filename = "cmc24_solution_" * solution_hash * "_" * uuid * ".png"
-    filename = "cmc24_solution_" * solution_hash * ".png"
     savefig(filename)
     
     return filename
 end
 
-function evaluate(temple, path)
+function evaluate(temple::Temple, path::Path)::Tuple{Int64, Int64, Int64}
     global fplot1, img1
     #fplot1 = cmc24_plot(temple)
     #tinfo = @timed begin
@@ -623,7 +714,12 @@ function evaluate(temple, path)
     return total, vacant, score
 end
 
-function finalize(temple=nothing, lamp=nothing, mirrors=nothing, path=nothing)
+function finalize(
+    temple::Union{Temple, Nothing}=nothing,
+    lamp::Union{Lamp, Nothing}=nothing,
+    mirrors::Union{Vector{Mirror}, Nothing}=nothing,
+    path::Union{Path, Nothing}=nothing
+)::Nothing
     if temple ≠ nothing
         # Can uncomment if we want to inspect the image with the invalid solution
         # cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
@@ -635,7 +731,7 @@ function finalize(temple=nothing, lamp=nothing, mirrors=nothing, path=nothing)
     return
 end
 
-function load_solution_file(filename::String)
+function load_solution_file(filename::String)::Tuple{Float64, Matrix{Float64}}
     if !isfile(filename)
         println(stderr, "ERROR! The file $filename doesn't exist.")
         return 0, []
@@ -652,7 +748,7 @@ function load_solution_file(filename::String)
     return score, matrix_data
 end
 
-function evaluate_solution(cmc24_solution)
+function evaluate_solution(cmc24_solution::Matrix{Float64})::Float64
     global best_score
     # load the solution
     lamp, mirrors = load_solution(cmc24_solution, mirror_length)
@@ -681,16 +777,13 @@ function evaluate_solution(cmc24_solution)
         cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
     end
 
-    # if score_percent < 20
-    #     cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
-    # end
-
     return score_percent
 end
 
 const best_solution = load_solution_file("best.txt")
 const best_score = [best_solution[1]] # array to be mutable
 const temple = load_temple(temple_string, block_size)
+
 # TODO: this precompute can be moved to the point of first-use - there are rare cases we don't need it at all
 const fplot1 = cmc24_plot(temple) # precompute the static base plot
 const img1 = FileIO.load(fplot1) # preload the static base image
