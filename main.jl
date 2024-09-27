@@ -60,15 +60,15 @@ function longest_segment_from_point(v::Point, rays::Array{Ray}, mirrors::Matrix{
     max_ray = Ray([0.0, 0.0], [0.0, 0.0])
     max_endpoint = Point([0.0, 0.0])
 
-    draw_circle(v[1], v[2], 1.0, 1)
-
     # TODO: can make a circular interval radian sweep, where each 1m segment belonging to a block is converted to an interval of angles with a distance
     # Then, we compute intervals of the closest-segments so we know it for each and every angle
     # We can use this to avoid any calls to temple_ray_intersection, which seems to be the bottleneck
     # This could allow us to try even more angles (finer angle-step), or more starting-points
 
+    is_last_ray = (length(rays) == MIRRORS)
+
     # Radians from 0 to 2π, steps of 1
-    step = (length(rays) == MIRRORS) ? 0.5 : 1.0 # if we are generating the last ray, we can use a smaller step
+    step = is_last_ray ? 0.5 : 1.0 # if we are generating the last ray, we can use a smaller step
     #step = 1
     for e in 0.0:step:359.9
         a = deg2rad(e)
@@ -97,32 +97,34 @@ function longest_segment_from_point(v::Point, rays::Array{Ray}, mirrors::Matrix{
             continue
         end
         
-        # intersections = 0
-        # for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
-        #     r = ray_ray_intersection(ray, ray2)
-        #     if r != (4, 0, 0) && r != (2, 0, 0) # 2 and 4 mean no intersection
-        #         if r[2] < dist # r[2] = t is the distance to the intersection
-        #             intersections += 1
-        #         end
-        #     end
-        # end
+        intersections = 0
+        for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
+            r = ray_ray_intersection(ray, ray2)
+            if r[1] != 4 && r[1] != 2 # 2 and 4 mean no intersection
+                if r[2] < dist # r[2] = t is the distance to the intersection
+                    intersections += 1
+                end
+            end
+        end
 
         endpoint = ray.point + ray.direction * dist
 
-        #score = dist - intersections * 1.2 + score_noise # penalty for every intersection, plus random noise
-        draw_rectangle_around_line(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1)
-        #draw_circle(endpoint[1], endpoint[2], 1.0, 1) # weirdly this doesn't help - and only slows us down
-        score = fast_score()
+        score = dist - intersections * 1.2 # penalty for every intersection
+        if is_last_ray
+            draw_rectangle_around_line(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1)
+            score = fast_score()
+        end
+
         if score > max_length
             max_length = score
             max_ray = Ray(v, ray.direction)
             max_endpoint = endpoint
         end
-        #draw_circle(endpoint[1], endpoint[2], 1.0, -1)
-        draw_rectangle_around_line(ray.point[1], ray.point[2], endpoint[1], endpoint[2], -1)
-    end
 
-    draw_circle(v[1], v[2], 1.0, -1)
+        if is_last_ray
+            draw_rectangle_around_line(ray.point[1], ray.point[2], endpoint[1], endpoint[2], -1)
+        end
+    end
     
     return (max_ray, max_length, max_endpoint)
 end
@@ -205,7 +207,7 @@ function generate_greedy_solution()::Tuple{Matrix{Float64}, Array{Ray}}
         ray, len, endpoint = longest_segment_from_point(endpoint, rays, my_solution, banned_angle)
         push!(rays, ray)
 
-        draw_ray(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1, (i == MIRRORS))
+        draw_ray(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1)
 
         end_point = rays[i + 1].point
         direction1 = rays[i].direction
