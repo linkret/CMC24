@@ -2,7 +2,73 @@
 #using ColorTypes
 using LinearAlgebra: norm, dot
 
-const Point = Vector{Float64} # from main.jl
+# TODO: seperate into another "header" .jl script
+struct Point 
+    x::Float64
+    y::Float64
+end
+
+function Point()
+    return Point(0., 0.)
+end
+
+function Point(arr::Vector)
+    return Point(arr[1], arr[2])
+end
+
+import Base.first
+
+function first(p::Point)
+    return p[1]
+end
+
+import Base.last
+
+function last(p::Point)
+    return p[2]
+end
+
+import Base.length
+
+function length(p::Point)
+    return 2
+end
+
+import Base.getindex
+
+function getindex(p::Point, i::Int64)
+    if i == 1
+        return p.x
+    elseif i == 2
+        return p.y
+    else
+        return 0. # TODO: throw Error
+    end
+end
+
+import Base.+
+
+function +(p1::Point, p2::Point)
+    return Point(p1.x + p2.x, p1.y + p2.y)
+end
+
+import Base.-
+
+function -(p1::Point, p2::Point)
+    return Point(p1.x - p2.x, p1.y - p2.y) # TODO: verify its not the other way around
+end
+
+import Base.*
+
+function *(p::Point, k::Number)
+    return Point(p.x * k, p.y * k)
+end
+
+function *(k::Number, p::Point)
+    return *(p, k)
+end
+
+const Direction = Point # Type Alias for 2D direction vector
 
 const downscale_factor = 5
 const resolution::Int = 3000 / downscale_factor # 600x600 pixels for downscale_factor=5, 1500x1500 for df=2, 3000x3000 for df=1
@@ -16,7 +82,7 @@ function coord_to_pixel(coord::Float64)::Float64
     return resolution * coord / 20 + 1 # originally was round()
 end
 
-function draw_rectangle!(corners::Vector{Vector{Float64}}, color::Int)::Nothing
+function draw_rectangle!(corners::Vector{Point}, color::Int)::Nothing
     global current_red_pixels, total_white_pixels, pixels
 
     if length(corners) != 4
@@ -24,7 +90,7 @@ function draw_rectangle!(corners::Vector{Vector{Float64}}, color::Int)::Nothing
     end
 
     # Convert with coord_to_pixel():
-    corners = [[coord_to_pixel(c[1]), coord_to_pixel(c[2])] for c in corners]
+    corners = [Point(coord_to_pixel(c[1]), coord_to_pixel(c[2])) for c in corners]
 
     # Calculate the bounding box of the rectangle
     min_x = floor(Int, minimum(first.(corners)))
@@ -138,15 +204,15 @@ function is_inside_quadrilateral(point::Tuple{Number, Number}, corners::Vector{P
     winding_number = 0
 
     for i in 1:4
-        x1, y1 = corners[i]
-        x2, y2 = corners[mod1(i + 1, 4)]
+        p1 = corners[i]
+        p2 = corners[mod1(i + 1, 4)]
 
-        if y1 <= y
-            if y2 > y && (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1) > 0
+        if p1.y <= y
+            if p2.y > y && (p2.x - p1.x) * (y - p1.y) - (x - p1.x) * (p2.y - p1.y) > 0
                 winding_number += 1
             end
         else
-            if y2 <= y && (x2 - x1) * (y - y1) - (x - x1) * (y2 - y1) < 0
+            if p2.y <= y && (p2.x - p1.x) * (y - p1.y) - (x - p1.x) * (p2.y - p1.y) < 0
                 winding_number -= 1
             end
         end
@@ -160,10 +226,10 @@ function draw_rectangle_around_line(x1::Float64, y1::Float64, x2::Float64, y2::F
     angle = atan(y2 - y1, x2 - x1) # angle from p1 to p2
     base_angle = angle + pi / 2 # angle from p1 to the left rectangle corner
     sinb, cosb = sin(base_angle), cos(base_angle)
-    p1l = [x1 + cosb, y1 + sinb] # actually cosb*light_width, sinb*light_width, but it's 1.0 meters
-    p1r = [x1 - cosb, y1 - sinb]
-    p2l = [x2 + cosb, y2 + sinb]
-    p2r = [x2 - cosb, y2 - sinb]
+    p1l = Point(x1 + cosb, y1 + sinb) # actually cosb*light_width, sinb*light_width, but it's 1.0 meters
+    p1r = Point(x1 - cosb, y1 - sinb)
+    p2l = Point(x2 + cosb, y2 + sinb)
+    p2r = Point(x2 - cosb, y2 - sinb)
     draw_rectangle!([p1l, p1r, p2r, p2l], color)
 end
 
@@ -185,7 +251,7 @@ function draw_ray(p1::Point, p2::Point, color::Int=1, second_circle::Bool=true):
 end
 
 function draw_block(x1::Float64, y1::Float64)::Nothing
-    draw_rectangle!([[x1, y1], [x1+1, y1], [x1+1, y1+1], [x1, y1+1]], 255)
+    draw_rectangle!([Point(x1, y1), Point(x1+1, y1), Point(x1+1, y1+1), Point(x1, y1+1)], 255)
 end
 
 function draw_temple(temple)::Nothing

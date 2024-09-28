@@ -37,9 +37,79 @@ const mirror_length = 0.5
 const light_halfwidth = 1
 const ε = 1e-12
 
-# TODO: change these fkn types to not be on Heap and dynamically allocated xD xD xDDD
-const Point = Vector{Float64} # Type Alias for 2D points
-const Direction = Vector{Float64} # Type Alias for 2D direction vector
+# TODO: seperate into another "header" .jl script
+struct Point 
+    x::Float64
+    y::Float64
+end
+
+function Point()
+    return Point(0., 0.)
+end
+
+function Point(arr::Vector)
+    return Point(arr[1], arr[2])
+end
+
+import Base.first
+
+function first(p::Point)
+    return p[1]
+end
+
+import Base.last
+
+function last(p::Point)
+    return p[2]
+end
+
+import Base.length
+
+function length(p::Point)
+    return 2
+end
+
+import Base.getindex
+
+function getindex(p::Point, i::Int64)
+    if i == 1
+        return p.x
+    elseif i == 2
+        return p.y
+    else
+        return 0. # TODO: throw Error
+    end
+end
+
+import Base.+
+
+function +(p1::Point, p2::Point)
+    return Point(p1.x + p2.x, p1.y + p2.y)
+end
+
+import Base.-
+
+function -(p1::Point, p2::Point)
+    return Point(p1.x - p2.x, p1.y - p2.y) # TODO: verify its not the other way around
+end
+
+import Base.*
+
+function *(p::Point, k::Number)
+    return Point(p.x * k, p.y * k)
+end
+
+function *(k::Number, p::Point)
+    return *(p, k)
+end
+
+function hash(p::Point, h::UInt)::UInt
+    h = hash(p.x, h)
+    h = hash(p.y, h)
+    return h
+end
+
+const Direction = Point # Type Alias for 2D direction vector
 
 struct Ray
     point::Point
@@ -156,10 +226,10 @@ function load_temple(temple_string::String, block_size::Int64)::Temple
                 x = (i - 1) * block_size
                 y = temple_shape[2] - j * block_size
                 
-                v1::Point = [x, y]
-                v2::Point = [x + block_size, y]
-                v3::Point = [x + block_size, y + block_size]
-                v4::Point = [x, y + block_size]
+                v1 = Point(x, y)
+                v2 = Point(x + block_size, y)
+                v3 = Point(x + block_size, y + block_size)
+                v4 = Point(x, y + block_size)
 
                 block = Block(
                     v1,
@@ -215,9 +285,9 @@ function load_solution(cmc24_solution::Matrix{Float64}, mirror_length::Float64):
     # preprocess the lamp
     α = cmc24_solution[1, 3]
     lamp = Lamp(
-        cmc24_solution[1, 1:2],
+        Point(cmc24_solution[1, 1:2]),
         α,
-        [cos(α), sin(α)]
+        Direction(cos(α), sin(α))
     )
 
     # preprocess the mirrors
@@ -225,9 +295,9 @@ function load_solution(cmc24_solution::Matrix{Float64}, mirror_length::Float64):
     for m ∈ 1 : 8
         α = cmc24_solution[m + 1, 3]
         
-        v::Point = cmc24_solution[m + 1, 1:2]
-        e::Direction = [cos(α),  sin(α)]
-        n::Direction = [-sin(α), cos(α)]  # normal
+        v = Point(cmc24_solution[m + 1, 1:2])
+        e = Direction(cos(α),  sin(α))
+        n = Direction(-sin(α), cos(α))  # normal
 
         mirror = Mirror(
             v,
@@ -247,7 +317,7 @@ function load_solution(cmc24_solution::Matrix{Float64}, mirror_length::Float64):
 end
 
 function point_in_block(point::Point, block::Union{Block, Nothing})::Bool
-    return block ≠ nothing && all(block.v1 .≤ point .≤ block.v3);
+    return block ≠ nothing && block.v1.x .≤ point.x .≤ block.v3.x && block.v1.y .≤ point.y .≤ block.v3.y;
 end
 
 function point_in_temple(temple::Temple, point::Point)::Bool
@@ -317,7 +387,7 @@ function ray_segment_intersection(ray::Ray, segment::Segment)::Tuple{Int, Float6
     l = segment.length
     β = segment.angle
 
-    s = l * [cos(β), sin(β)]
+    s = l * Point(cos(β), sin(β))
 
     (case, t, u) = ray_ray_intersection(ray, Ray(q, s))
 
@@ -347,8 +417,8 @@ function segment_segment_intersection(segment1::Segment, segment2::Segment)::Boo
     lb = segment2.length
     β = segment2.angle
 
-    r = la * [cos(α), sin(α)]
-    s = lb * [cos(β), sin(β)]
+    r = la * Point(cos(α), sin(α))
+    s = lb * Point(cos(β), sin(β))
 
     (case, t, u) = ray_ray_intersection(Ray(p, r), Ray(q, s))
 
@@ -397,16 +467,16 @@ end
 function temple_ray_intersection(temple::Temple, ray::Ray)::Float64
     t_min = ∞
     for block ∈ temple.blocks
-        t_approx = min(
-            euclidean_distance(ray.point, block.v1),
-            euclidean_distance(ray.point, block.v2),
-            euclidean_distance(ray.point, block.v3),
-            euclidean_distance(ray.point, block.v4)
-        )
+        # t_approx = min(
+        #     euclidean_distance(ray.point, block.v1),
+        #     euclidean_distance(ray.point, block.v2),
+        #     euclidean_distance(ray.point, block.v3),
+        #     euclidean_distance(ray.point, block.v4)
+        # )
 
-        if t_approx > t_min
-            continue # not 100% precise when we are for example directly below a block, but okay. The early-exit provides around a 30% speedup
-        end
+        # if t_approx > t_min
+        #     continue # not 100% precise when we are for example directly below a block, but okay. The early-exit provides around a 30% speedup
+        # end
 
         # only check the blocks that are in the direction of the ray's origin. Over 50% speedup over checking all 4 block segments
 
@@ -437,10 +507,10 @@ function temple_ray_intersection(temple::Temple, ray::Ray)::Float64
                 t_min = t
             end
         end
+    end
 
-        # if t_min != Inf
-        #     return t_min
-        # end
+    if t_min == Inf
+        println("ERROR, INFINITE DISTANCE")
     end
 
     return t_min
@@ -448,20 +518,20 @@ end
 
 function check_solution(temple::Temple, lamp::Lamp, mirrors::Vector{Mirror})::Bool
     # check the lamp is within the temple
-    if !all([0, 0] .≤ lamp.v .≤ temple.size)
+    if !(all(0 .≤ lamp.v.x .≤ temple.size) && all(0 .≤ lamp.v.y .≤ temple.size))
         println(stderr, "ERROR! The lamp isn't placed within temple limits which is of size $(temple.size).")
         finalize(temple, lamp, mirrors)
         return false
     end
 
     # check mirrors' ends are within the temple
-    if !all(all([0, 0] .≤ mirror.v1 .≤ temple.size) for mirror ∈ mirrors)
+    if !all((all(0 .≤ mirror.v1.x .≤ temple.size) && all(0 .≤ mirror.v1.y .≤ temple.size)) for mirror ∈ mirrors)
         println(stderr, "ERROR! Some mirror isn't placed within temple of size $(temple.size).")
         finalize(temple, lamp, mirrors)
         return false
     end
 
-    if !all(all([0, 0] .≤ mirror.v2 .≤ temple.size) for mirror ∈ mirrors)
+    if !all((all(0 .≤ mirror.v2.x .≤ temple.size) && all(0 .≤ mirror.v2.y .≤ temple.size)) for mirror ∈ mirrors)
         println(stderr, "ERROR! Some mirror isn't placed within temple of size $(temple.size).")
         finalize(temple, lamp, mirrors)
         return false
@@ -615,12 +685,10 @@ function cmc24_plot(
         
         # rectangle parts of the lightened area
         for (p1, p2, e) ∈ zip(path.points, path.points[2:end], path.directions)
-            (x1, y1) = p1
-            (x2, y2) = p2
-            (nx, ny) = (e[2], -e[1])
+            n = Direction(e[2], -e[1])
             
-            xs = [x1 - nx, x2 - nx, x2 + nx, x1 + nx]
-            ys = [y1 - ny, y2 - ny, y2 + ny, y1 + ny]
+            xs = [p1.x - n.x, p2.x - n.x, p2.x + n.x, p1.x + n.x]
+            ys = [p1.y - n.y, p2.y - n.y, p2.y + n.y, p1.y + n.y]
             
             plot!(
                 Shape(xs, ys),
@@ -634,12 +702,12 @@ function cmc24_plot(
     # plot the mirrors
     if mirrors ≠ nothing
         for mirror ∈ mirrors
-            (x1, y1) = mirror.v1
-            (x2, y2) = mirror.v2
-            (nx, ny) = 0.05 * mirror.n
+            p1 = mirror.v1
+            p2 = mirror.v2
+            n = 0.05 * mirror.n
 
-            xs = [x1 - nx, x2 - nx, x2 + nx, x1 + nx]
-            ys = [y1 - ny, y2 - ny, y2 + ny, y1 + ny]
+            xs = [p1.x - n.x, p2.x - n.x, p2.x + n.x, p1.x + n.x]
+            ys = [p1.y - n.y, p2.y - n.y, p2.y + n.y, p1.y + n.y]
 
             plot!(
                 Shape(xs, ys),
@@ -672,11 +740,11 @@ function cmc24_plot(
     
     # plot the building blocks
     for block ∈ temple.blocks
-        (x, y) = block.v1
+        p = block.v1
         plot!(
             Shape(
-                x .+ [0, block_size, block_size, 0],
-                y .+ [0, 0, block_size, block_size]),
+                p.x .+ [0, block_size, block_size, 0],
+                p.y .+ [0, 0, block_size, block_size]),
             color = RGBA(0.50, 0.48, 0.47, 1),
             linecolor = RGBA(0, 0, 0, 0),
             linewidth = 0,
