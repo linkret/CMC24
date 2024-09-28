@@ -53,11 +53,17 @@ end
     The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
     The arguemnt rays is used to avoid generating rays that are too close to the previous rays.
     The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
-    Default banned_angle_range is around 15 degrees (0.20 rad).
+    Default banned_angle_range is around 7 degrees (0.1 rad).
 """
-function longest_segment_from_point(v::Point, rays::Array{Ray}, mirrors::Matrix{Float64}, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.2)::Tuple{Ray, Float64, Point}
+function longest_segment_from_point(
+    v::Point,
+    rays::Array{Ray},
+    mirrors::Matrix{Float64},
+    banned_angle::Float64 = -1.0,
+    banned_angle_range::Float64 = 0.1
+)::Tuple{Vector{Ray}, Float64, Point}
     max_length = -1000.0
-    max_ray = Ray([0.0, 0.0], [0.0, 0.0])
+    max_rays = [Ray([0.0, 0.0], [0.0, 0.0])]
     max_endpoint = Point([0.0, 0.0])
 
     # TODO: can make a circular interval radian sweep, where each 1m segment belonging to a block is converted to an interval of angles with a distance
@@ -80,53 +86,73 @@ function longest_segment_from_point(v::Point, rays::Array{Ray}, mirrors::Matrix{
         end
         
         ray = Ray(v, [cos(a), sin(a)])
-        dist = temple_ray_intersection(temple, ray) - PULL_OUT_M # subtract to avoid colliding with Temple blocks
+        new_rays = [deepcopy(ray)]
+        dist = 0.0
+        
+        while true
+            dist = temple_ray_intersection(temple, ray) # subtract to avoid colliding with Temple blocks
 
-        mirror_in_the_way = false
-        for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
-            p = [mirror[1], mirror[2]]
-            r = ray_segment_intersection(ray, Segment(p, mirror_length, mirror[3]))
-            if r[1] != 1 && r[2] < dist # 2 and 3 mean intersection closer than collision_point with temple
-                mirror_in_the_way = true
+            mirror_in_the_way = false
+            new_ray = Ray([], [])
+
+            for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
+                p = [mirror[1], mirror[2]]
+                r = ray_segment_intersection(ray, Segment(p, mirror_length, mirror[3]))
+                if r[1] != 1 && r[2] < dist # 2 and 3 mean intersection
+                    mirror_in_the_way = true
+                    n = mirror[3] - π / 2 # normal angle
+                    alpha = 2 * n - atan(ray.direction[2], ray.direction[1]) # angle of reflection
+                    collision_point = ray.point + ray.direction * r[2]
+                    new_ray = Ray(collision_point, -[cos(alpha), sin(alpha)])
+                    # TODO: gigabreak if angle is too similar to the previous one, to prevent infite loop
+                    break
+                end
+            end
+
+            if mirror_in_the_way
+                push!(new_rays, deepcopy(new_ray))
+                ray = deepcopy(new_ray)
+            else
                 break
             end
         end
-
-        if mirror_in_the_way
-            # TODO: implement multiple reflections here
-            continue
-        end
         
-        intersections = 0
-        for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
-            r = ray_ray_intersection(ray, ray2)
-            if r[1] != 4 && r[1] != 2 # 2 and 4 mean no intersection
-                if r[2] < dist # r[2] = t is the distance to the intersection
-                    intersections += 1
-                end
+        # intersections = 0
+        # for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
+        #     r = ray_ray_intersection(ray, ray2)
+        #     if r[1] != 4 && r[1] != 2 # 2 and 4 mean no intersection
+        #         if r[2] < dist # r[2] = t is the distance to the intersection
+        #             intersections += 1
+        #         end
+        #     end
+        # end
+        # score = dist - intersections * 1.2 # penalty for every intersection
+
+        endpoint = ray.point + ray.direction * (max(dist - PULL_OUT_M, 0.2)) # TODO: inspect
+
+        if is_last_ray || true
+            for i in eachindex(new_rays[1:end-1])
+                draw_rectangle_around_line(new_rays[i].point, new_rays[i + 1].point, 1)
             end
-        end
-
-        endpoint = ray.point + ray.direction * dist
-
-        score = dist - intersections * 1.2 # penalty for every intersection
-        if is_last_ray
-            draw_rectangle_around_line(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1)
+            draw_rectangle_around_line(ray.point, endpoint, 1)
             score = fast_score()
         end
 
-        if score > max_length
-            max_length = score
-            max_ray = Ray(v, ray.direction)
-            max_endpoint = endpoint
+        if score + 0 * (length(new_rays) - 1) > max_length
+            max_length = score + 0 * (length(new_rays) - 1) # TODO: remove
+            max_rays = deepcopy(new_rays)
+            max_endpoint = deepcopy(endpoint)
         end
 
-        if is_last_ray
-            draw_rectangle_around_line(ray.point[1], ray.point[2], endpoint[1], endpoint[2], -1)
+        if is_last_ray || true
+            for i in eachindex(new_rays[1:end-1])
+                draw_rectangle_around_line(new_rays[i].point, new_rays[i + 1].point, -1)
+            end
+            draw_rectangle_around_line(ray.point, endpoint, -1)
         end
     end
     
-    return (max_ray, max_length, max_endpoint)
+    return (max_rays, max_length, max_endpoint)
 end
 
 function place_mirror(v::Point, e::Float64, rays::Array{Ray}, mirrors::Matrix{Float64})::Tuple{Point, Bool}
@@ -192,26 +218,41 @@ function generate_greedy_solution()::Tuple{Matrix{Float64}, Array{Ray}}
     rays = Array{Ray}(undef, 0)
 
     ray, len, endpoint = generate_long_segment()
-    push!(rays, ray)
-    draw_ray(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1, false)
+    push!(rays, deepcopy(ray))
+    draw_ray(ray.point, endpoint, 1, true)
     
-    my_solution = Matrix{Float64}(undef, 0, 3)
+    my_solution = Matrix{Float64}(undef, 0, 3) # TODO: maybe use struct Mirror
 
     lamp_angle = atan(rays[1].direction[2], rays[1].direction[1])
     my_solution = vcat(my_solution, [rays[1].point[1] rays[1].point[2] lamp_angle])
 
+    solution_has_multiple_reflexions = false
+
     tinfo = @timed begin
     for i in 1:MIRRORS
-        # calculate angle from endpoint to the starting point of the previous ray
+        direction1 = ray.direction # if we had multi-reflections last iteration, this will be the last ray's angle
+
         banned_angle = atan(ray.point[2] - endpoint[2], ray.point[1] - endpoint[1])
-        ray, len, endpoint = longest_segment_from_point(endpoint, rays, my_solution, banned_angle)
-        push!(rays, ray)
-
-        draw_ray(ray.point[1], ray.point[2], endpoint[1], endpoint[2], 1)
-
-        end_point = rays[i + 1].point
-        direction1 = rays[i].direction
+        new_rays, len, endpoint = longest_segment_from_point(endpoint, rays, my_solution, banned_angle)
+        ray = new_rays[1]
+        push!(rays, deepcopy(ray))
+        
+        for j in eachindex(new_rays[1:end-1])
+            solution_has_multiple_reflexions = true
+            draw_ray(new_rays[j].point, new_rays[j + 1].point, 1, false) # can probably just be rectangles
+        end
+        draw_ray(new_rays[end].point, endpoint, 1, true)
+        
+        # calculate angle from endpoint to the starting point of the previous ray
+        mirror_point = rays[i + 1].point
         direction2 = rays[i + 1].direction
+
+        # if solution_has_multiple_reflexions
+        #     println("Step $i")
+        #     println(new_rays)
+        #     println("mirror_point: ", mirror_point)
+        #     println("enpoint:", endpoint)
+        # end
 
         angle_between_rays = atan(direction2[2], direction2[1]) - atan(direction1[2], direction1[1])
         mirror_angle = atan(direction1[2], direction1[1]) + angle_between_rays / 2
@@ -220,15 +261,21 @@ function generate_greedy_solution()::Tuple{Matrix{Float64}, Array{Ray}}
             mirror_angle += 2π
         end
         
-        mirror, okay = place_mirror(end_point, mirror_angle, rays, my_solution)
+        mirror, okay = place_mirror(mirror_point, mirror_angle, rays, my_solution) # TODO: missing new_rays checks here
         if !okay
             println("Could not place mirror ", i)
             return Matrix{Float64}(undef, 0, 0), Ray[]
         end
         my_solution = vcat(my_solution, [mirror[1] mirror[2] mirror_angle])
+        ray = new_rays[end]
     end
     end # @time
     println("Time to greedily generate: ", tinfo.time, " s")
+
+    # if solution_has_multiple_reflexions == false
+    #     println("No multiple reflexions!")
+    #     return Matrix{Float64}(undef, 0, 0), Ray[]
+    # end
 
     return my_solution, rays
 end
@@ -292,6 +339,8 @@ function main()
             sum_scores += score
             num_valid_scores += 1
         end
+
+        # break # TODO: remove
         
         #println("Average score: ", sum_scores / num_valid_scores, " Percent valid scores: ", 100.0 * num_valid_scores / num_scores, " Best score: ", best_score)
         println("Average score: ", sum_scores / num_valid_scores, " Best score: ", my_best_score)

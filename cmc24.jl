@@ -37,6 +37,7 @@ const mirror_length = 0.5
 const light_halfwidth = 1
 const ε = 1e-12
 
+# TODO: change these fkn types to not be on Heap and dynamically allocated xD xD xDDD
 const Point = Vector{Float64} # Type Alias for 2D points
 const Direction = Vector{Float64} # Type Alias for 2D direction vector
 

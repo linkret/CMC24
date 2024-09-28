@@ -16,7 +16,7 @@ function coord_to_pixel(coord::Float64)::Float64
     return resolution * coord / 20 + 1 # originally was round()
 end
 
-function draw_rectangle!(corners::Vector{Vector{Float64}}, color::Int, set::Bool=false)::Nothing
+function draw_rectangle!(corners::Vector{Vector{Float64}}, color::Int)::Nothing
     global current_red_pixels, total_white_pixels, pixels
 
     if length(corners) != 4
@@ -47,8 +47,8 @@ function draw_rectangle!(corners::Vector{Vector{Float64}}, color::Int, set::Bool
             if is_inside_quadrilateral((x, y), corners) # TODO: don't need to use this check for Blocks, but okay
                 current_red_pixels[] -= (pixels[x, y] != 0 && pixels[x, y] != 255)
 
-                if set
-                    if pixels[x, y] == 0 && color == 255
+                if color == 255
+                    if pixels[x, y] == 0
                         total_white_pixels[] -= 1 # WARNING: setting a rectangle to White will not increase this
                     end
                     pixels[x, y] = color
@@ -64,46 +64,46 @@ function draw_rectangle!(corners::Vector{Vector{Float64}}, color::Int, set::Bool
     end
 end
 
-function point_to_segment_distance(px::Point, py::Point, x1::Float64, y1::Float64, x2::Float64, y2::Float64)::Float64
-    line_vec = [x2 - x1, y2 - y1]
-    point_vec = [px - x1, py - y1]
-    line_len = norm(line_vec)
-    line_unitvec = line_vec / line_len
-    point_vec_scaled = point_vec / line_len
-    t = dot(line_unitvec, point_vec_scaled)
-    t_clamped = clamp(t, 0.0, 1.0)
-    nearest = [x1, y1] + t_clamped * line_vec
-    return norm([px, py] - nearest)
-end
+# function point_to_segment_distance(px::Point, py::Point, x1::Float64, y1::Float64, x2::Float64, y2::Float64)::Float64
+#     line_vec = [x2 - x1, y2 - y1]
+#     point_vec = [px - x1, py - y1]
+#     line_len = norm(line_vec)
+#     line_unitvec = line_vec / line_len
+#     point_vec_scaled = point_vec / line_len
+#     t = dot(line_unitvec, point_vec_scaled)
+#     t_clamped = clamp(t, 0.0, 1.0)
+#     nearest = [x1, y1] + t_clamped * line_vec
+#     return norm([px, py] - nearest)
+# end
 
-function draw_area_around_ray!(x1::Float64, y1::Float64, x2::Float64, y2::Float64, color::Int=1)::Nothing
-    global current_red_pixels, pixels
+# function draw_area_around_ray!(x1::Float64, y1::Float64, x2::Float64, y2::Float64, color::Int=1)::Nothing
+#     global current_red_pixels, pixels
 
-    x1, y1 = coord_to_pixel(x1), coord_to_pixel(y1) # TODO: verify if this is correct
-    x2, y2 = coord_to_pixel(x2), coord_to_pixel(y2)
-    radius = resolution * 1.0 / 20
+#     x1, y1 = coord_to_pixel(x1), coord_to_pixel(y1) # TODO: verify if this is correct
+#     x2, y2 = coord_to_pixel(x2), coord_to_pixel(y2)
+#     radius = resolution * 1.0 / 20
 
-    min_x = floor(Int, max(1, min(x1 - radius, x2 - radius)))
-    max_x = ceil(Int, min(resolution, max(x1 + radius, x2 + radius)))
-    min_y = floor(Int, max(1, min(y1 - radius, y2 - radius)))
-    max_y = ceil(Int, min(resolution, max(y1 + radius, y2 + radius)))
+#     min_x = floor(Int, max(1, min(x1 - radius, x2 - radius)))
+#     max_x = ceil(Int, min(resolution, max(x1 + radius, x2 + radius)))
+#     min_y = floor(Int, max(1, min(y1 - radius, y2 - radius)))
+#     max_y = ceil(Int, min(resolution, max(y1 + radius, y2 + radius)))
 
-    for x in min_x:max_x
-        for y in min_y:max_y
-            if pixels[x, y] == 255
-                continue
-            end
+#     for x in min_x:max_x
+#         for y in min_y:max_y
+#             if pixels[x, y] == 255
+#                 continue
+#             end
 
-            if point_to_segment_distance(x, y, x1, y1, x2, y2) <= radius
-                current_red_pixels[] -= (pixels[x, y] != 0 && pixels[x, y] != 255)
+#             if point_to_segment_distance(x, y, x1, y1, x2, y2) <= radius
+#                 current_red_pixels[] -= (pixels[x, y] != 0 && pixels[x, y] != 255)
 
-                pixels[x, y] += color
+#                 pixels[x, y] += color
 
-                current_red_pixels[] += (pixels[x, y] != 0 && pixels[x, y] != 255)
-            end
-        end
-    end
-end
+#                 current_red_pixels[] += (pixels[x, y] != 0 && pixels[x, y] != 255)
+#             end
+#         end
+#     end
+# end
 
 function draw_circle(x1::Float64, y1::Float64, radius::Float64=1.0, color::Int=1)::Nothing
     global current_red_pixels, pixels
@@ -167,7 +167,11 @@ function draw_rectangle_around_line(x1::Float64, y1::Float64, x2::Float64, y2::F
     draw_rectangle!([p1l, p1r, p2r, p2l], color)
 end
 
-function draw_ray(x1::Float64, y1::Float64, x2::Float64, y2::Float64, color::Int=1, second_circle=true)::Nothing
+function draw_rectangle_around_line(p1::Point, p2::Point, color::Int=1)::Nothing
+    draw_rectangle_around_line(p1[1], p1[2], p2[1], p2[2], color)
+end
+
+function draw_ray(x1::Float64, y1::Float64, x2::Float64, y2::Float64, color::Int=1, second_circle::Bool=true)::Nothing
     draw_rectangle_around_line(x1, y1, x2, y2, color)
     draw_circle(x1, y1, 1.0, color)
     if second_circle
@@ -176,8 +180,12 @@ function draw_ray(x1::Float64, y1::Float64, x2::Float64, y2::Float64, color::Int
     #draw_area_around_ray!(x1, y1, x2, y2, color) # this shit is way slower, Sadge
 end
 
+function draw_ray(p1::Point, p2::Point, color::Int=1, second_circle::Bool=true)::Nothing
+    draw_ray(p1[1], p1[2], p2[1], p2[2], color, second_circle)
+end
+
 function draw_block(x1::Float64, y1::Float64)::Nothing
-    draw_rectangle!([[x1, y1], [x1+1, y1], [x1+1, y1+1], [x1, y1+1]], 255, true)
+    draw_rectangle!([[x1, y1], [x1+1, y1], [x1+1, y1+1], [x1, y1+1]], 255)
 end
 
 function draw_temple(temple)::Nothing
@@ -203,7 +211,7 @@ function reset()::Nothing
 end
 
 function fast_score()::Float64
-    return 100.0 * current_red_pixels[] / total_white_pixels[] + 0.5 # 0.5 just in case, to still try official evaluate() if we're that close
+    return 100.0 * current_red_pixels[] / total_white_pixels[] + 0.5 # 0.5 just in case, to still try official evaluate() if we're pretty close
 end
 
 # These functions work fine, but we don't really need them yet:
