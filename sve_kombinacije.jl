@@ -313,11 +313,11 @@ function write_susedi_to_json(susedi::Array{Vector{IntPoint}}, filename::String)
     end
 end
 
-function dict_to_intpoint(d::Dict{String, Int})::IntPoint
+function dict_to_intpoint(d)::IntPoint
     return IntPoint(d["x"], d["y"])
 end
 
-function list_to_vector(l::Vector{Dict{String, Int}})::Vector{IntPoint}
+function list_to_vector(l)::Vector{IntPoint}
     return [dict_to_intpoint(d) for d in l]
 end
 
