@@ -1,5 +1,5 @@
-#using Images
-#using ColorTypes
+using Images
+using ColorTypes
 using LinearAlgebra: norm, dot
 
 # TODO: seperate into another "header" .jl script
@@ -281,17 +281,17 @@ function fast_score()::Float64
 end
 
 # These functions work fine, but we don't really need them yet:
-# function pixel_to_color(value)
-#     if value == 0
-#         return RGB(1.0, 1.0, 1.0)  # White
-#     elseif value == 255
-#         return RGB(0.0, 0.0, 0.0)  # Black
-#     else
-#         return RGB(1.0, 0.0, 0.0)  # Red
-#     end
-# end
+function pixel_to_color(value)
+    if value == 0
+        return RGB(1.0, 1.0, 1.0)  # White
+    elseif value == 255
+        return RGB(0.0, 0.0, 0.0)  # Black
+    else
+        return RGB(1.0, 0.0, 0.0)  # Red
+    end
+end
 
-# function draw_pixels_png()
-#     image = colorview(RGB, [pixel_to_color(pixels[j, i]) for i in 1:size(pixels, 1), j in 1:size(pixels, 2)])
-#     save("output_image.png", image)
-# end
+function draw_pixels_png()
+    image = colorview(RGB, [pixel_to_color(pixels[j, i]) for i in 1:size(pixels, 1), j in 1:size(pixels, 2)])
+    save("output_image.png", image)
+end

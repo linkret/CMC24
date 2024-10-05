@@ -1,12 +1,14 @@
 # using Random
 using Base.Iterators: drop
+using DataStructures
 
 include("cmc24.jl")
 include("fast_eval.jl")
 
 const MIRRORS = 8
-const PULL_OUT_L = 0.5
-const PULL_OUT_M = 0.5 # 1.2 was probably too extreme
+const PULL_OUT_L = 0.4
+const PULL_OUT_M = 0.4 # 1.2 was probably too extreme
+const ALLOW_REFLECTIONS = false
 
 function generate_segment()::Tuple{Ray, Float64, Point}
     v = Point(0., 0.)
@@ -46,131 +48,237 @@ function generate_long_segment(iter_cnt::Int = 100)::Tuple{Ray, Float64, Point}
     return ray, length, endpoint
 end
 
-"""
-    longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Float64 = -1.0, banned_angle_range::Float64 = 0.20)
-
-    Returns ((v, e), length, endpoint) where v is the starting point, e is the direction, length is the length of the ray, and endpoint is the point of collision.
-    The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
-    The arguemnt rays is used to avoid generating rays that are too close to the previous rays.
-    The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
-    Default banned_angle_range is around 7 degrees (0.1 rad).
-"""
-function longest_segment_from_point(
-    v::Point,
-    rays::Array{Ray},
-    mirrors::Matrix{Float64},
-    banned_angle::Float64 = -1.0,
-    banned_angle_range::Float64 = 0.1
-)::Tuple{Vector{Ray}, Float64, Point}
-    max_length = -1000.0
-    max_rays = [Ray(Point(0., 0.), Direction(0., 0.))]
-    max_endpoint = Point(0., 0.)
-
-    if point_in_temple(temple, v)
-        println("POINT IN TEMPLE BRO $v") # TODO: diagnose and fix
-        return (Ray[], max_length, max_endpoint)
-    end
+function interesting_angles(v::Point, is_last_ray::Bool, banned_angle::Float64 = -1.0)::Vector{Float64}
+    angles = Float64[]
 
     # TODO: can make a circular interval radian sweep, where each 1m segment belonging to a block is converted to an interval of angles with a distance
     # Then, we compute intervals of the closest-segments so we know it for each and every angle
     # We can use this to avoid any calls to temple_ray_intersection, which seems to be the bottleneck
     # This could allow us to try even more angles (finer angle-step), or more starting-points
 
-    is_last_ray = (length(rays) == MIRRORS)
-    draw = (length(rays) >= MIRRORS - 0)
+    banned_angle_range = 0.1
+
+    # if is_last_ray
+    #     for b in temple.blocks # this loop seems 99% useless
+    #         if (b.v1.x == 0 || b.v3.x == 20 || b.v1.y == 0 || b.v3.y == 20)
+    #             continue
+    #         end
+    #         for p in [b.v1, b.v2, b.v3, b.v4]
+    #             angle = atan(p[2] - v[2], p[1] - v[1])
+    #             if banned_angle != -1.0
+    #                 if abs(angle - banned_angle) < banned_angle_range || abs(angle - banned_angle + 2π) < banned_angle_range || abs(angle - banned_angle - 2π) < banned_angle_range
+    #                     continue
+    #                 end
+    #             end
+                
+    #             push!(angles, angle + 0.001)
+    #             push!(angles, angle - 0.001)
+    #         end
+    #     end
+    # end
+
     step = is_last_ray ? 0.5 : 1.0 # if we are generating the last ray, we can use a smaller step
-    
     for e in 0.0:step:359.9
-        a = deg2rad(e)
-        
         if banned_angle != -1.0
-            if abs(a - banned_angle) < banned_angle_range || abs(a - banned_angle + 2π) < banned_angle_range || abs(a - banned_angle - 2π) < banned_angle_range
+        angle = deg2rad(e)
+            if abs(angle - banned_angle) < banned_angle_range || abs(angle - banned_angle + 2π) < banned_angle_range || abs(angle - banned_angle - 2π) < banned_angle_range
                 continue
             end
         end
-        
-        ray = Ray(v, Direction(cos(a), sin(a)))
-        new_rays = [deepcopy(ray)]
-        dist = 0.0
-        sum_dist = 0.0
-        
-        while length(new_rays) < 20
-            dist = temple_ray_intersection(temple, ray) # subtract to avoid colliding with Temple blocks
-            collision_dist = 0.0
+        push!(angles, angle)
+    end
 
-            mirror_in_the_way = false
-            new_ray = Ray(Point(0., 0.), Point(0., 0.))
+    sort!(angles)
+    unique!(angles)
 
-            for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
-                p = Point(mirror[1], mirror[2])
-                r = ray_segment_intersection(ray, Segment(p, mirror_length, mirror[3]))
-                if r[1] != 1 && r[2] < dist # 2 and 3 mean intersection
-                    mirror_in_the_way = true
-                    n = mirror[3] - π / 2 # normal angle
-                    alpha = 2 * n - atan(ray.direction[2], ray.direction[1]) # angle of reflection
-                    collision_dist = r[2]
-                    collision_point = ray.point + ray.direction * r[2]
-                    new_ray = Ray(collision_point, -1 * Point(cos(alpha), sin(alpha)))
-                    break
-                end
-            end
+    return angles
+end
 
-            if mirror_in_the_way
-                push!(new_rays, deepcopy(new_ray))
-                ray = deepcopy(new_ray)
-                sum_dist += collision_dist
-            else
-                sum_dist += dist
+function evaluate_ray(v::Point, a::Float64, rays::Array{Ray}, mirrors::Matrix{Float64}, draw::Bool)::Tuple{Vector{Ray}, Float64, Point, Int}
+    ray = Ray(v, Direction(cos(a), sin(a)))
+    new_rays = [deepcopy(ray)]
+    dist = 0.0
+    sum_dist = 0.0
+    mirror_idx = 0
+    
+    while length(new_rays) < 20
+        dist = temple_ray_intersection(temple, ray) # subtract to avoid colliding with Temple blocks
+        collision_dist = 0.0
+
+        mirror_in_the_way = false
+        new_ray = Ray(Point(0., 0.), Point(0., 0.))
+
+        # for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
+        for (midx, mirror) in enumerate(drop(eachrow(mirrors), 1)) # first one is the lamp
+            p = Point(mirror[1], mirror[2])
+            r = ray_segment_intersection(ray, Segment(p, mirror_length, mirror[3]))
+            if r[1] != 1 && r[2] < dist # 2 and 3 mean intersection
+                mirror_in_the_way = true
+                mirror_idx = midx
+                n = mirror[3] - π / 2 # normal angle
+                alpha = 2 * n - atan(ray.direction[2], ray.direction[1]) # angle of reflection
+                collision_dist = r[2]
+                collision_point = ray.point + ray.direction * r[2]
+                new_ray = Ray(collision_point, -1 * Point(cos(alpha), sin(alpha)))
                 break
             end
         end
 
-        if length(new_rays) >= 20 # to break infinite reflection loops
-            continue
-        end
-
-        if sum_dist < 7.0 && max_length > 7.0 # don't even waste time evaluating this angle
-            continue
-        end
-        
-        intersections = 0
-        for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
-            r = ray_ray_intersection(ray, ray2)
-            if r[1] != 4 && r[1] != 2 # 2 and 4 mean no intersection
-                if r[2] < dist # r[2] = t is the distance to the intersection
-                    # TODO: should use real distances - it's easily possible that ray2 ends before this collision point, and we make a mistake
-                    intersections += 1
-                end
+        if mirror_in_the_way
+            if !ALLOW_REFLECTIONS
+                sum_dist = 0.0 # will cause a Return immediately outside
+                break
             end
-        end
-
-        score = sum_dist - intersections * 1.2 - (length(new_rays) - 1) * 2.0 # applies penalties
-
-        endpoint = ray.point + ray.direction * (max(dist - PULL_OUT_M, 0.2)) # TODO: inspect
-
-        if draw
-            for i in eachindex(new_rays[1:end-1])
-                draw_rectangle_around_line(new_rays[i].point, new_rays[i + 1].point, 1)
-            end
-            draw_rectangle_around_line(ray.point, endpoint, 1)
-            score = fast_score()
-        end
-
-        if score > max_length
-            max_length = score
-            max_rays = deepcopy(new_rays)
-            max_endpoint = deepcopy(endpoint)
-        end
-
-        if draw
-            for i in eachindex(new_rays[1:end-1])
-                draw_rectangle_around_line(new_rays[i].point, new_rays[i + 1].point, -1)
-            end
-            draw_rectangle_around_line(ray.point, endpoint, -1)
+            push!(new_rays, deepcopy(new_ray))
+            ray = deepcopy(new_ray)
+            sum_dist += collision_dist
+        else
+            sum_dist += dist
+            break
         end
     end
+
+    if length(new_rays) >= 20 # to break infinite reflection loops
+        return Ray[], 0.0, Point(0., 0.), 0
+    end
+
+    if sum_dist < 7.0 # don't even waste time evaluating this angle
+        return Ray[], 0.0, Point(0., 0.), 0
+    end
     
-    return (max_rays, max_length, max_endpoint)
+    intersections = 0
+    for ray2 in rays[1:end-1] # end-1 because we surely intersect with the last ray
+        r = ray_ray_intersection(ray, ray2)
+        if r[1] != 4 && r[1] != 2 # 2 and 4 mean no intersection
+            if r[2] < dist # r[2] = t is the distance to the intersection
+                # TODO: should use real distances - it's easily possible that ray2 ends before this collision point, and we make a mistake
+                intersections += 1
+            end
+        end
+    end
+
+    score = sum_dist - intersections * 1.5 - (length(new_rays) - 1) * 0.5 # applies penalties
+
+    pull_out = PULL_OUT_M + rand() * 0.2
+    endpoint = ray.point + ray.direction * (max(dist - pull_out, 0.2))
+
+    if draw
+        old_score = fast_score()
+        for i in eachindex(new_rays[1:end-1])
+            draw_rectangle_around_line(new_rays[i].point, new_rays[i + 1].point, 1)
+        end
+        draw_rectangle_around_line(ray.point, endpoint, 1)
+        score = fast_score() - old_score
+    end
+
+    if !draw
+        score += score * rand() * 0.01 # randomize score a bit
+    end
+    ret = (new_rays, score, endpoint, mirror_idx)
+
+    if draw
+        for i in eachindex(new_rays[1:end-1])
+            draw_rectangle_around_line(new_rays[i].point, new_rays[i + 1].point, -1)
+        end
+        draw_rectangle_around_line(ray.point, endpoint, -1)
+    end
+
+    return ret
+end
+
+"""
+    longest_segment_from_point(v::Array{Float64, 1}, rays, banned_angle::Float64 = -1.0)
+
+    Returns ((v, e), length, endpoint) where v is the starting point, e is the direction, length is the length of the ray, and endpoint is the point of collision.
+    The ray is generated from the point v, and the angle of the ray is chosen to maximize the length of the ray.
+    The arguemnt rays is used to avoid generating rays that are too close to the previous rays.
+    The angle of the ray is chosen from the range [0, 2π) excluding the banned_angle ± banned_angle_range.
+"""
+function longest_segment_from_point(
+    v::Point,
+    rays::Array{Ray},
+    mirrors::Matrix{Float64},
+    banned_angle::Float64 = -1.0
+)::Tuple{Vector{Ray}, Float64, Point}
+    max_score = -1000.0
+    max_rays = Ray[]
+    max_endpoint = Point(0., 0.)
+
+    if point_in_temple(temple, v)
+        println("POINT IN TEMPLE BRO $v")
+        return (Ray[], 0.0, Point(0., 0.))
+    end
+
+    is_last_ray = (length(rays) == MIRRORS)
+    draw = (length(rays) >= MIRRORS - 1)
+
+    angles = interesting_angles(v, is_last_ray, banned_angle) # TODO: add banned_angles here
+    explore_mirrors = Set{Int}()
+    
+    # TODO: dont remembers rays, just reevaluate later 
+    # allowed_score_cnt = (is_last_ray ? 1 : 1) # always take best score for the last ray
+    # score_queue = PriorityQueue{Tuple{Float64, Float64}, Tuple{Vector{Ray}, Float64, Point}}(Base.Order.Reverse)
+
+    for a in angles
+        new_rays, score, endpoint, mirror_idx = evaluate_ray(v, a, rays, mirrors, draw)
+        if mirror_idx != 0
+            push!(explore_mirrors, mirror_idx)
+        end
+        
+        #println("Try queue operations")
+        # enqueue!(score_queue, (score, a), (new_rays, score, endpoint))
+        # if length(score_queue) > allowed_score_cnt
+        #     dequeue!(score_queue)
+        #     println(score_queue)
+        # end
+        #println("Finished queue operations")
+
+        if score > max_score
+            max_score = score
+            max_rays = new_rays
+            max_endpoint = endpoint
+        end
+    end
+
+    if length(explore_mirrors) > 0 && ALLOW_REFLECTIONS
+        # if is_last_ray
+        #     println("Last ray can collide with some Mirrors: ", explore_mirrors)
+        # end
+
+        extra_angles = Float64[]
+        for mirror_idx in explore_mirrors
+            mirror = mirrors[mirror_idx, :]
+            m1 = Point(mirror[1:2])
+            m2 = m1 + Point(cos(mirror[3]), sin(mirror[3])) * mirror_length
+            for i in 1:100
+                m = m1 + (m2 - m1) * (i / 50) # TODO: can maybe write this better
+                angle = atan(m[2] - v[2], m[1] - v[1])
+                push!(extra_angles, angle)
+            end
+        end
+
+        for a in extra_angles
+            new_rays, score, endpoint, mirror_idx = evaluate_ray(v, a, rays, mirrors, draw)
+            # enqueue!(score_queue, (score, a), (new_rays, score, endpoint))
+            # if length(score_queue) > allowed_score_cnt
+            #     dequeue!(score_queue)
+            # end
+            if score > max_score
+                max_score = score
+                max_rays = new_rays
+                max_endpoint = endpoint
+            end
+        end
+    end
+
+    # Convert the PriorityQueue to an array
+    # score_array = collect(values(score_queue))
+    # random_entry = rand(score_array) # Select a random entry from the array
+    # println(random_entry)
+ 
+    # return random_entry[1], random_entry[2], random_entry[3]
+
+    return max_rays, max_score, max_endpoint
 end
 
 function place_mirror(v::Point, e::Float64, rays::Array{Ray}, mirrors::Matrix{Float64})::Tuple{Point, Bool}
@@ -246,12 +354,13 @@ function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float
 
     solution_has_multiple_reflexions = false
 
-    max_heuristic = 11.0 # how many % of area a single ray (mirror) covers in the best possible case
+    # TODO: revert
+    max_heuristic = 15.0 # how many % of area a single ray (mirror) covers in the best possible case
 
     tinfo = @timed begin
     for i in 1:MIRRORS
         if fast_score() + (MIRRORS + 1 - i) * max_heuristic < best_score # heuristic to quit early
-            println("Gave up at $i, score was only $(fast_score())")
+            # println("Gave up at $i, score was only $(fast_score())")
             return Matrix{Float64}(undef, 0, 0), Ray[]
         end
         direction1 = ray.direction # if we had multi-reflections last iteration, this will be the last ray's angle
@@ -273,13 +382,6 @@ function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float
         # calculate angle from endpoint to the starting point of the previous ray
         mirror_point = rays[i + 1].point
         direction2 = rays[i + 1].direction
-
-        # if solution_has_multiple_reflexions
-        #     println("Step $i")
-        #     println(new_rays)
-        #     println("mirror_point: ", mirror_point)
-        #     println("enpoint:", endpoint)
-        # end
 
         angle_between_rays = atan(direction2[2], direction2[1]) - atan(direction1[2], direction1[1])
         mirror_angle = atan(direction1[2], direction1[1]) + angle_between_rays / 2

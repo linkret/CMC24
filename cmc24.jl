@@ -90,7 +90,7 @@ end
 import Base.-
 
 function -(p1::Point, p2::Point)
-    return Point(p1.x - p2.x, p1.y - p2.y) # TODO: verify its not the other way around
+    return Point(p1.x - p2.x, p1.y - p2.y)
 end
 
 import Base.*
@@ -101,6 +101,12 @@ end
 
 function *(k::Number, p::Point)
     return *(p, k)
+end
+
+import Base.isless
+
+function isless(p1::Point, p2::Point)::Bool
+    return p1.x < p2.x || (p1.x == p2.x && p1.y < p2.y)
 end
 
 function hash(p::Point, h::UInt)::UInt
@@ -114,6 +120,10 @@ const Direction = Point # Type Alias for 2D direction vector
 struct Ray
     point::Point
     direction::Direction
+end
+
+function isless(r1::Ray, r2::Ray)::Bool
+    return isless(r1.point, r2.point) || (r1.point == r2.point && isless(r1.direction, r2.direction))
 end
 
 struct Segment
@@ -335,6 +345,9 @@ end
 function block_from_point(temple::Temple, point::Point)::Union{Block, Nothing}
     x = floor(Int, point[1])
     y = floor(Int, point[2])
+    if x < 0 || y < 0 || x > 20 || y > 20
+        return nothing
+    end
     return temple.grid[y + 1][x + 1]
 end
 
@@ -394,7 +407,7 @@ function ray_segment_intersection(ray::Ray, segment::Segment)::Tuple{Int, Float6
     # CASE 1 - No intersection
     if case == 1 && t < 0 && u < 0            return (1, 0., 0.) end
     if case == 2                              return (1, 0., 0.) end
-    if case == 3 && (t ≤ 0 || u < 0 || u > 1) return (1, 0., 0.) end
+    if case == 3 && (t ≤ 0 || u < 0 || u > 1 + ε) return (1, 0., 0.) end
     if case == 4                              return (1, 0., 0.) end
 
     # CASE 2 - Ray and segment are collinear and they intersect
@@ -465,6 +478,10 @@ function euclidean_distance(p1::Point, p2::Point)::Float64
 end
 
 function temple_ray_intersection(temple::Temple, ray::Ray)::Float64
+    if point_in_temple(temple, ray.point)
+        return 0.0
+    end
+
     t_min = ∞
     for block ∈ temple.blocks
         # t_approx = min(
@@ -510,7 +527,7 @@ function temple_ray_intersection(temple::Temple, ray::Ray)::Float64
     end
 
     if t_min == Inf
-        println("ERROR, INFINITE DISTANCE")
+        println("ERROR, INFINITE DISTANCE ", ray)
     end
 
     return t_min
