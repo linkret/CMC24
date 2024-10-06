@@ -8,6 +8,7 @@ include("fast_eval.jl")
 
 const PULL_OUT_SMALL = 0.1
 const PULL_OUT_BIG = 2.0
+const udaljenost_od_ruba=35
 
 struct RazmatraniKutevi
     distance::Float64
@@ -32,6 +33,24 @@ function kut_izmedu_tocki(p1::IntPoint,p2::IntPoint)::Float64
     return atan(dy,dx)# *(180 / π)  # convert from radians to degrees
 end
 
+function is_within_distance_of_boundary(point::Point, matrix_size::Int = udaljenost_od_ruba, distance::Int = 35)
+    x=point.x
+    y=point.y
+
+    # Calculate the boundaries (top, bottom, left, right)
+    min_x, max_x = 0, matrix_size
+    min_y, max_y = 0, matrix_size
+
+    # Check if the point is within the specified distance from any boundary
+    close_to_left   = abs(x - min_x) ≤ distance
+    close_to_right  = abs(x - max_x) ≤ distance
+    close_to_top    = abs(y - min_y) ≤ distance
+    close_to_bottom = abs(y - max_y) ≤ distance
+
+    # Return true if close to any boundary
+    return close_to_left || close_to_right || close_to_top || close_to_bottom
+end
+
 # skenira u krug i daje po svakom kutu najdaljeg susjeda(malo odmaknutog od zida doduse)
 function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
 
@@ -39,7 +58,7 @@ function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
         return RazmatraniKutevi[]
     end
 
-    step = 1
+    step = 0.5
     razmatraniKutevi=RazmatraniKutevi[]
 
     for e in 0.0:step:359.9
@@ -47,12 +66,16 @@ function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
         ray = Ray(v, Direction(cos(a), sin(a)))
         dist = temple_ray_intersection(temple, ray) # subtract to avoid colliding with Temple blocks
 
-        if dist<8.1 #this sucks
+        if dist<9.1 #this sucks
             continue
         end
 
         endpoint = ray.point + ray.direction * (dist - 0.1)#(max(dist - PULL_OUT_M, 0.2))
         endpoint=Point(ceil(endpoint.x*10)/10,ceil(endpoint.y*10)/10)
+        if is_within_distance_of_boundary(endpoint)==false
+            continue
+        end
+
         result=Point(0,0)
         kut=-69
 
@@ -60,6 +83,7 @@ function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
 
         for i in 0:1:2
             for j in 0:1:2
+
                 xx=endpoint.x-(i-1)/10
                 yy=endpoint.y-(j-1)/10
                 susjed=Point(xx,yy)
@@ -167,10 +191,10 @@ function smjerovi(v::Point,banned_angle_range::Float64 = 0.1)::Vector{IntPoint}
 end
 
 
-function stvori_susjede(susedi::Array{Vector{IntPoint}, 2})
+function stvori_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2})
     for x in 1:200
         for y in 1:200
-            susedi[x,y]=IntPoint[]
+            privremeni_susedi[x,y]=IntPoint[]
         end
     end
 
@@ -178,20 +202,16 @@ function stvori_susjede(susedi::Array{Vector{IntPoint}, 2})
         println(x)
         for y in 11:99
             
-            """
-            if x>25 && y>25 #ignorirajmo sve koji nisu na rubu jer budimo realni
+            if x>udaljenost_od_ruba && y>udaljenost_od_ruba #ignorirajmo sve koji nisu na rubu jer budimo realni
                 continue
             end
-            """
             
-            susedi[x, y] = smjerovi( Point(x/10,y/10) )
-            susedi[x,200-y]=IntPoint[]
-            susedi[200-x,y]=IntPoint[]
-            susedi[200-x,200-y]=IntPoint[]
-            for e in susedi[x,y]
-                push!(susedi[x,200-y], IntPoint(e.x, 200-e.y) )
-                push!(susedi[200-x,y], IntPoint(200-e.x, e.y) )
-                push!(susedi[200-x,200-y], IntPoint(200-e.x, 200-e.y) )
+            privremeni_susedi[x, y] = smjerovi( Point(x/10,y/10) )
+            
+            for e in privremeni_susedi[x,y]
+                push!(privremeni_susedi[x,200-y], IntPoint(e.x, 200-e.y) )
+                push!(privremeni_susedi[200-x,y], IntPoint(200-e.x, e.y) )
+                push!(privremeni_susedi[200-x,200-y], IntPoint(200-e.x, 200-e.y) )
             end
         end
     end
@@ -214,8 +234,9 @@ function searchFrom(v::IntPoint, depth::Int,
         return
     end
 
+    moji_susedi=susedi[v.x,v.y]
+    """
     moji_susedi=IntPoint[]
-
     if (depth >= 3)
         moji_susedi = susedi[v.x,v.y]
     else
@@ -223,6 +244,7 @@ function searchFrom(v::IntPoint, depth::Int,
             push!(moji_susedi, rand(susedi[v.x,v.y]))
         end
     end
+    """
     
     for z in moji_susedi
         a=kut_izmedu_tocki(v,z)+π
@@ -250,10 +272,6 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
 
     for x in 1:99
         for y in 1:99
-            #susedi[x,y]=IntPoint[]
-            #susedi[x,200-y]=IntPoint[]
-            #susedi[200-x,y]=IntPoint[]
-            #susedi[200-x,200-y]=IntPoint[]
 
             for sused in privremeni_susedi[x,y]
                 a=kut_izmedu_tocki(IntPoint(x,y), sused )
@@ -357,46 +375,15 @@ while true
     while point_in_temple(temple, Point(v.x / 10, v.y / 10))
         x = rand(11:189)
         y = rand(11:189)
-        v = IntPoint(x, y)
+    #    v = IntPoint(x, y)
+        v = IntPoint(61,19)
     end
 
     println("Searching from $v")
     searchFrom(v, 0)
 end
 
-"""
-maxsus=0
-println(susedi[20,20])
-println( length(susedi[20,20]) )
 
-suma=0
-kol=0
-reza=IntPoint(0,0)
 
-for i in 1:99
-    for j in 1:99
-        global maxsus
-        global suma
-        global kol
-        global reza
-        if length(susedi[i,j] )>0
-            suma+=length(susedi[i,j] )
-            kol+=1
-        end
-        if maxsus <length(susedi[i,j] )
-            reza=IntPoint(i,j)
-            maxsus = length(susedi[i,j] )
-        end
-    end
-end
-
-println(susedi[33,93])
-
-print("maximum:")
-println(maxsus)
-println(reza)
-print("prosjek:")
-println(suma/kol)
-"""
 
 
