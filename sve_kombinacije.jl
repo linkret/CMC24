@@ -1,6 +1,3 @@
-# using Random
-using Base.Iterators: drop
-using Pkg
 using JSON
 
 include("cmc24.jl")
@@ -8,7 +5,7 @@ include("fast_eval.jl")
 
 const PULL_OUT_SMALL = 0.1
 const PULL_OUT_BIG = 2.0
-const udaljenost_od_ruba=35
+const udaljenost_od_ruba = 21
 
 struct RazmatraniKutevi
     distance::Float64
@@ -33,10 +30,11 @@ function kut_izmedu_tocki(p1::IntPoint,p2::IntPoint)::Float64
     return atan(dy,dx)# *(180 / π)  # convert from radians to degrees
 end
 
-function is_within_distance_of_boundary(point::Point, matrix_size::Int = udaljenost_od_ruba, distance::Int = 35)
+function is_within_distance_of_boundary(point::Point, distance::Int = udaljenost_od_ruba)
     x=point.x
     y=point.y
 
+    matrix_size=200
     # Calculate the boundaries (top, bottom, left, right)
     min_x, max_x = 0, matrix_size
     min_y, max_y = 0, matrix_size
@@ -58,10 +56,10 @@ function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
         return RazmatraniKutevi[]
     end
 
-    step = 0.5
+    step = 0.005
     razmatraniKutevi=RazmatraniKutevi[]
 
-    for e in 0.0:step:359.9
+    for e in 0.0:step:359.99999
         a = deg2rad(e)
         ray = Ray(v, Direction(cos(a), sin(a)))
         dist = temple_ray_intersection(temple, ray) # subtract to avoid colliding with Temple blocks
@@ -217,17 +215,19 @@ function stvori_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2})
     end
 end
 
-najval=0
+const najval = Ref{Float64}(0.0)
+const best = Ref{Float64}(0.0)
 
 function searchFrom(v::IntPoint, depth::Int,
     banned_angle::Float64 = -1.0,
     banned_angle_range::Float64 = 0.1 )
     global najval
     if depth==9
-        
-        if fast_score()>najval
-            najval=fast_score()
-            println(najval)
+        if fast_score()>najval[]
+            najval[]=fast_score()
+            global best
+            best[]=max(best[],najval[])
+            println(najval[])
             draw_pixels_png()
         end
 
@@ -263,12 +263,7 @@ function searchFrom(v::IntPoint, depth::Int,
     end
 end
 
-function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::Array{Vector{IntPoint}, 2})
-    for x in 1:200
-        for y in 1:200
-            susedi[x,y]=IntPoint[]
-        end
-    end
+function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::Array{Vector{IntPoint}, 2} , pocetak::Float64,korak::Float64,kraj::Float64)
 
     for x in 1:99
         for y in 1:99
@@ -280,10 +275,10 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
                 ray = Ray(pocetna_tocka, Direction(cos(a), sin(a)))
                 dist = temple_ray_intersection(temple, ray)
 
-                maxsus=0
-                global naj=IntPoint(0,0)
-                ok=false
-                for pullOut in PULL_OUT_SMALL:0.1:PULL_OUT_BIG
+                maxsus = 0
+                naj = IntPoint(0,0)
+                ok = false
+                for pullOut in pocetak:korak:kraj
                     endpoint = pocetna_tocka + ray.direction * (dist - pullOut)
                     tocka=Point(round(endpoint.x, digits=1) , round(endpoint.y, digits=1) )
                     if point_in_temple(temple, tocka)
@@ -315,6 +310,7 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
         end
     end
 end
+
 function intpoint_to_dict(p::IntPoint)::Dict{String, Int}
     return Dict("x" => p.x, "y" => p.y)
 end
@@ -352,17 +348,26 @@ function load_susedi_from_json(filename::String)::Array{Vector{IntPoint}}
 end
 
 const susedi = begin
-    filename = "susedi.json"
-    if isfile(filename)
-        load_susedi_from_json(filename)
+    sus_filename = "susedi.json"
+    if isfile(sus_filename)
+        load_susedi_from_json(sus_filename)
     else
         privremeni_susedi = Array{Vector{IntPoint}}(undef, 200, 200)
-        stvori_susjede(privremeni_susedi)
+        tinfo = @timed begin
+            stvori_susjede(privremeni_susedi)
+        end
+        println("Time to create susedi: ", tinfo.time, " s")
 
         susedi = Array{Vector{IntPoint}}(undef, 200, 200)
-        usavrsi_susjede(privremeni_susedi, susedi)
+        for x in 1:200
+            for y in 1:200
+                susedi[x,y]=IntPoint[]
+            end
+        end
+        usavrsi_susjede(privremeni_susedi, susedi, PULL_OUT_SMALL, 0.1 , PULL_OUT_BIG)
+        usavrsi_susjede(privremeni_susedi, susedi, PULL_OUT_BIG, -0.1 , PULL_OUT_SMALL)
 
-        write_susedi_to_json(susedi, filename)
+        write_susedi_to_json(susedi, sus_filename)
         susedi
     end
 end
@@ -371,16 +376,19 @@ reset()
 draw_temple(temple)
 
 while true
-    v = IntPoint(0, 0)
-    while point_in_temple(temple, Point(v.x / 10, v.y / 10))
-        x = rand(11:189)
-        y = rand(11:189)
-    #    v = IntPoint(x, y)
-        v = IntPoint(61,19)
+    v = Point(0, 0)
+    vint = IntPoint(0, 0)
+    while point_in_temple(temple, Point(v.x, v.y)) || !is_within_distance_of_boundary(Point(vint.x, vint.y))
+        x = rand(11:99)
+        y = rand(11:99)
+        vint = IntPoint(x, y)
+        v = Point(x / 10, y / 10)
     end
-
+    global najval
+    najval[] = 0.0
     println("Searching from $v")
-    searchFrom(v, 0)
+    searchFrom(vint, 0)
+    println("Najbolje do sad: $best[]")
 end
 
 
