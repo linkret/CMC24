@@ -60,10 +60,10 @@ function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
         return RazmatraniKutevi[]
     end
 
-    step = 0.5
+    step = 0.005
     razmatraniKutevi=RazmatraniKutevi[]
 
-    for e in 0.0:step:359.9
+    for e in 0.0:step:359.99999
         a = deg2rad(e)
         ray = Ray(v, Direction(cos(a), sin(a)))
         dist = temple_ray_intersection(temple, ray) # subtract to avoid colliding with Temple blocks
@@ -147,6 +147,7 @@ function smjerovi(v::Point,banned_angle_range::Float64 = 0.1)::Vector{IntPoint}
     #return Point[]
 
     susjedi=IntPoint[]
+    used_angles=Float64[]
     used_angles=Float64[]
     #pretrazi 5 tocki i poslije pospajaj s
     while true
@@ -253,6 +254,16 @@ function searchFrom(v::IntPoint, depth::Int,
     #     moji_susedi = shuffle(moji_susedi)
     #     should_break = true
     # end
+    moji_susedi = susedi[v.x,v.y]
+    
+    # moji_susedi=IntPoint[]
+    # if depth >= 3
+    #     moji_susedi = susedi[v.x,v.y]
+    # else
+    #     moji_susedi = susedi[v.x,v.y]
+    #     moji_susedi = shuffle(moji_susedi)
+    #     should_break = true
+    # end
     
     for z in moji_susedi
         a=kut_izmedu_tocki(v,z)+π
@@ -268,10 +279,6 @@ function searchFrom(v::IntPoint, depth::Int,
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) )
         searchFrom(z, depth+1, a)
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) , -1 )
-
-        if should_break
-            break
-        end
     end
 end
 
@@ -289,8 +296,7 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
 
                 prosli=0
                 global naj=IntPoint(0,0)
-                ok=false
-                for pullOut in pocetak:korak:kraj
+                for pullOut in PULL_OUT_SMALL:0.1:PULL_OUT_BIG
                     endpoint = pocetna_tocka + ray.direction * (dist - pullOut)
                     tocka=Point(round(endpoint.x, digits=1) , round(endpoint.y, digits=1) )
                     if point_in_temple(temple, tocka)
@@ -305,19 +311,16 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
                         IntTocka=IntPoint(round(Int, tocka.x*10), round(Int, tocka.y*10))
                         if prosli < length(privremeni_susedi[IntTocka.x,IntTocka.y])
                             naj=IntTocka
-                            ok=true
+                            push!(susedi[x,y], naj )
+                        push!(susedi[x,200-y], IntPoint(naj.x, 200-naj.y) )
+                        push!(susedi[200-x,y], IntPoint(200-naj.x, naj.y) )
+                        push!(susedi[200-x,200-y], IntPoint(200-naj.x, 200-naj.y) )
                         end
                         prosli=length(privremeni_susedi[IntTocka.x,IntTocka.y])
                     end
 
                 end
 
-                if ok
-                    push!(susedi[x,y], naj )
-                    push!(susedi[x,200-y], IntPoint(naj.x, 200-naj.y) )
-                    push!(susedi[200-x,y], IntPoint(200-naj.x, naj.y) )
-                    push!(susedi[200-x,200-y], IntPoint(200-naj.x, 200-naj.y) )
-                end
             end
         end
     end
@@ -360,12 +363,15 @@ function load_susedi_from_json(filename::String)::Array{Vector{IntPoint}}
 end
 
 const susedi = begin
-    filename = "susedi.json"
-    if isfile(filename)
-        load_susedi_from_json(filename)
+    sus_filename = "susedi.json"
+    if isfile(sus_filename)
+        load_susedi_from_json(sus_filename)
     else
         privremeni_susedi = Array{Vector{IntPoint}}(undef, 200, 200)
-        stvori_susjede(privremeni_susedi)
+        tinfo = @timed begin
+            stvori_susjede(privremeni_susedi)
+        end
+        println("Time to create susedi: ", tinfo.time, " s")
 
         susedi = Array{Vector{IntPoint}}(undef, 200, 200)
         for x in 1:200
@@ -376,7 +382,7 @@ const susedi = begin
         usavrsi_susjede(privremeni_susedi, susedi, PULL_OUT_SMALL, 0.1 , PULL_OUT_BIG)
     #    usavrsi_susjede(privremeni_susedi, susedi, PULL_OUT_BIG, -0.1 , PULL_OUT_SMALL)
 
-        write_susedi_to_json(susedi, filename)
+        write_susedi_to_json(susedi, sus_filename)
         susedi
     end
 end

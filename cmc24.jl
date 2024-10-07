@@ -345,7 +345,7 @@ end
 function block_from_point(temple::Temple, point::Point)::Union{Block, Nothing}
     x = floor(Int, point[1])
     y = floor(Int, point[2])
-    if x < 0 || y < 0 || x > 20 || y > 20
+    if x < 0 || y < 0 || x ≥ temple.shape[1] || y ≥ temple.shape[2]
         return nothing
     end
     return temple.grid[y + 1][x + 1]

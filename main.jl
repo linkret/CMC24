@@ -340,6 +340,34 @@ function place_mirror(v::Point, e::Float64, rays::Array{Ray}, mirrors::Matrix{Fl
     return (Point(0., 0.), false) # couldn't place mirror anywhere
 end
 
+function longest_segment_from_ray(
+    v::Point,
+    last_ray::Ray,
+    rays::Array{Ray},
+    mirrors::Matrix{Float64},
+    banned_angle::Float64 = -1.0,
+    banned_angle_range::Float64 = 0.1
+)::Tuple{Vector{Ray}, Float64, Point}
+    max_score = -1000.0
+    max_rays = [Ray(Point(0., 0.), Direction(0., 0.))]
+    max_endpoint = Point(0., 0.)
+
+    for shift in 0.1:-0.1:-0.4
+        p = Point(v[1] + rays[end].direction[1] * shift, v[2] + rays[end].direction[2] * shift)
+        draw_rectangle_around_line(v, p, -1)
+        new_rays, score, endpoint = longest_segment_from_point(p, rays, mirrors, banned_angle, banned_angle_range)
+        draw_rectangle_around_line(v, p, 1)
+        # TODO: also place mirror here and check if it's valid 
+        if score > max_score
+            max_score = score
+            max_rays = deepcopy(new_rays) # TODO: probably dont need deepcopies almost anywhere, they're paranoid
+            max_endpoint = deepcopy(endpoint)
+        end
+    end
+
+    return (max_rays, max_score, max_endpoint)
+end
+
 function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float64}, Array{Ray}}
     rays = Array{Ray}(undef, 0)
 
@@ -354,8 +382,7 @@ function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float
 
     solution_has_multiple_reflexions = false
 
-    # TODO: revert
-    max_heuristic = 15.0 # how many % of area a single ray (mirror) covers in the best possible case
+    max_heuristic = 11.0 # how many % of area a single ray (mirror) covers in the best possible case
 
     tinfo = @timed begin
     for i in 1:MIRRORS
@@ -366,7 +393,7 @@ function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float
         direction1 = ray.direction # if we had multi-reflections last iteration, this will be the last ray's angle
 
         banned_angle = atan(ray.point[2] - endpoint[2], ray.point[1] - endpoint[1])
-        new_rays, len, endpoint = longest_segment_from_point(endpoint, rays, my_solution, banned_angle)
+        new_rays, len, endpoint = longest_segment_from_ray(endpoint, ray, rays, my_solution, banned_angle)
         if length(new_rays) == 0 # There was an error
             return Matrix{Float64}(undef, 0, 0), Ray[]
         end
@@ -374,7 +401,6 @@ function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float
         push!(rays, deepcopy(ray))
         
         for j in eachindex(new_rays[1:end-1])
-            solution_has_multiple_reflexions = true
             draw_ray(new_rays[j].point, new_rays[j + 1].point, 1, false) # can probably just be rectangles
         end
         draw_ray(new_rays[end].point, endpoint, 1, true)
@@ -385,10 +411,7 @@ function generate_greedy_solution(best_score::Float64 = 0.0)::Tuple{Matrix{Float
 
         angle_between_rays = atan(direction2[2], direction2[1]) - atan(direction1[2], direction1[1])
         mirror_angle = atan(direction1[2], direction1[1]) + angle_between_rays / 2
-        
-        if mirror_angle < 0
-            mirror_angle += 2π
-        end
+        mirror_angle = (mirror_angle < 0) ? mirror_angle + 2π : mirror_angle
         
         mirror, okay = place_mirror(mirror_point, mirror_angle, rays, my_solution) # TODO: missing new_rays checks here
         if !okay
