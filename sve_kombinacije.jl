@@ -1,6 +1,10 @@
+<<<<<<< HEAD
 # using Random
 using Base.Iterators: drop
 using Pkg
+=======
+using Random
+>>>>>>> a35a36f (Ensure type stability)
 using JSON
 
 include("cmc24.jl")
@@ -146,7 +150,7 @@ function smjerovi(v::Point,banned_angle_range::Float64 = 0.1)::Vector{IntPoint}
     #return Point[]
 
     susjedi=IntPoint[]
-    used_angles=[]
+    used_angles=Float64[]
     #pretrazi 5 tocki i poslije pospajaj s
     while true
         naj=-5.0
@@ -241,17 +245,17 @@ function searchFrom(v::IntPoint, depth::Int,
         return
     end
 
-    moji_susedi=susedi[v.x,v.y]
-    """
-    moji_susedi=IntPoint[]
-    if (depth >= 3)
-        moji_susedi = susedi[v.x,v.y]
-    else
-        if length(susedi[v.x,v.y]) > 0
-            push!(moji_susedi, rand(susedi[v.x,v.y]))
-        end
-    end
-    """
+    moji_susedi = susedi[v.x,v.y]
+    should_break = false
+    
+    # moji_susedi=IntPoint[]
+    # if depth >= 3
+    #     moji_susedi = susedi[v.x,v.y]
+    # else
+    #     moji_susedi = susedi[v.x,v.y]
+    #     moji_susedi = shuffle(moji_susedi)
+    #     should_break = true
+    # end
     
     for z in moji_susedi
         a=kut_izmedu_tocki(v,z)+π
@@ -267,6 +271,10 @@ function searchFrom(v::IntPoint, depth::Int,
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) )
         searchFrom(z, depth+1, a)
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) , -1 )
+
+        if should_break
+            break
+        end
     end
 end
 
@@ -396,9 +404,14 @@ while true
     global best
     najval=0
     println("Searching from $v")
+<<<<<<< HEAD
     searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
     println("najbolje do sad:")
     println(best)
+=======
+    searchFrom(vint, 0)
+    println("Najbolje do sad: $(best[])")
+>>>>>>> a35a36f (Ensure type stability)
 end
 
 
