@@ -335,6 +335,9 @@ end
 function block_from_point(temple::Temple, point::Point)::Union{Block, Nothing}
     x = floor(Int, point[1])
     y = floor(Int, point[2])
+    if x < 0 || y < 0 || x ≥ temple.shape[1] || y ≥ temple.shape[2]
+        return nothing
+    end
     return temple.grid[y + 1][x + 1]
 end
 
@@ -394,7 +397,7 @@ function ray_segment_intersection(ray::Ray, segment::Segment)::Tuple{Int, Float6
     # CASE 1 - No intersection
     if case == 1 && t < 0 && u < 0            return (1, 0., 0.) end
     if case == 2                              return (1, 0., 0.) end
-    if case == 3 && (t ≤ 0 || u < 0 || u > 1) return (1, 0., 0.) end
+    if case == 3 && (t ≤ 0 || u < 0 || u > 1 + ε) return (1, 0., 0.) end
     if case == 4                              return (1, 0., 0.) end
 
     # CASE 2 - Ray and segment are collinear and they intersect
