@@ -1,10 +1,7 @@
-<<<<<<< HEAD
 # using Random
 using Base.Iterators: drop
 using Pkg
-=======
 using Random
->>>>>>> a35a36f (Ensure type stability)
 using JSON
 
 include("cmc24.jl")
@@ -404,14 +401,9 @@ while true
     global best
     najval=0
     println("Searching from $v")
-<<<<<<< HEAD
     searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
     println("najbolje do sad:")
     println(best)
-=======
-    searchFrom(vint, 0)
-    println("Najbolje do sad: $(best[])")
->>>>>>> a35a36f (Ensure type stability)
 end
 
 
