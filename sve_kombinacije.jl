@@ -8,7 +8,7 @@ include("fast_eval.jl")
 
 const PULL_OUT_SMALL = 0.1
 const PULL_OUT_BIG = 2.0
-const udaljenost_od_ruba=35
+const udaljenost_od_ruba=2.1
 
 struct RazmatraniKutevi
     distance::Float64
@@ -33,10 +33,11 @@ function kut_izmedu_tocki(p1::IntPoint,p2::IntPoint)::Float64
     return atan(dy,dx)# *(180 / π)  # convert from radians to degrees
 end
 
-function is_within_distance_of_boundary(point::Point, matrix_size::Int = udaljenost_od_ruba, distance::Int = 35)
+function is_within_distance_of_boundary(point::Point, distance::Float64 = udaljenost_od_ruba)
     x=point.x
     y=point.y
 
+    matrix_size=20
     # Calculate the boundaries (top, bottom, left, right)
     min_x, max_x = 0, matrix_size
     min_y, max_y = 0, matrix_size
@@ -202,7 +203,7 @@ function stvori_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2})
         println(x)
         for y in 11:99
             
-            if x>udaljenost_od_ruba && y>udaljenost_od_ruba #ignorirajmo sve koji nisu na rubu jer budimo realni
+            if x>udaljenost_od_ruba*10 && y>udaljenost_od_ruba*10 #ignorirajmo sve koji nisu na rubu jer budimo realni
                 continue
             end
             
@@ -218,6 +219,7 @@ function stvori_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2})
 end
 
 najval=0
+best=0
 
 function searchFrom(v::IntPoint, depth::Int,
     banned_angle::Float64 = -1.0,
@@ -228,7 +230,12 @@ function searchFrom(v::IntPoint, depth::Int,
         if fast_score()>najval
             najval=fast_score()
             println(najval)
-            draw_pixels_png()
+
+            global best
+            if best<najval
+                best=najval
+                draw_pixels_png()
+            end
         end
 
         return
@@ -263,12 +270,7 @@ function searchFrom(v::IntPoint, depth::Int,
     end
 end
 
-function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::Array{Vector{IntPoint}, 2})
-    for x in 1:200
-        for y in 1:200
-            susedi[x,y]=IntPoint[]
-        end
-    end
+function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::Array{Vector{IntPoint}, 2} , pocetak::Float64,korak::Float64,kraj::Float64)
 
     for x in 1:99
         for y in 1:99
@@ -280,10 +282,10 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
                 ray = Ray(pocetna_tocka, Direction(cos(a), sin(a)))
                 dist = temple_ray_intersection(temple, ray)
 
-                maxsus=0
+                prosli=0
                 global naj=IntPoint(0,0)
                 ok=false
-                for pullOut in PULL_OUT_SMALL:0.1:PULL_OUT_BIG
+                for pullOut in pocetak:korak:kraj
                     endpoint = pocetna_tocka + ray.direction * (dist - pullOut)
                     tocka=Point(round(endpoint.x, digits=1) , round(endpoint.y, digits=1) )
                     if point_in_temple(temple, tocka)
@@ -296,11 +298,11 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
 
                     if(dist1<=dist2)#ako dist2 puca dalje od nase tocke onda imaju line of fire wooo
                         IntTocka=IntPoint(round(Int, tocka.x*10), round(Int, tocka.y*10))
-                        if maxsus < length(privremeni_susedi[IntTocka.x,IntTocka.y])
-                            maxsus=length(privremeni_susedi[IntTocka.x,IntTocka.y])
+                        if prosli < length(privremeni_susedi[IntTocka.x,IntTocka.y])
                             naj=IntTocka
                             ok=true
                         end
+                        prosli=length(privremeni_susedi[IntTocka.x,IntTocka.y])
                     end
 
                 end
@@ -315,6 +317,7 @@ function usavrsi_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2}, susedi::
         end
     end
 end
+
 function intpoint_to_dict(p::IntPoint)::Dict{String, Int}
     return Dict("x" => p.x, "y" => p.y)
 end
@@ -360,27 +363,42 @@ const susedi = begin
         stvori_susjede(privremeni_susedi)
 
         susedi = Array{Vector{IntPoint}}(undef, 200, 200)
-        usavrsi_susjede(privremeni_susedi, susedi)
+        for x in 1:200
+            for y in 1:200
+                susedi[x,y]=IntPoint[]
+            end
+        end
+        usavrsi_susjede(privremeni_susedi, susedi, PULL_OUT_SMALL, 0.1 , PULL_OUT_BIG)
+    #    usavrsi_susjede(privremeni_susedi, susedi, PULL_OUT_BIG, -0.1 , PULL_OUT_SMALL)
 
         write_susedi_to_json(susedi, filename)
         susedi
     end
 end
 
+
 reset()
 draw_temple(temple)
 
-while true
-    v = IntPoint(0, 0)
-    while point_in_temple(temple, Point(v.x / 10, v.y / 10))
-        x = rand(11:189)
-        y = rand(11:189)
-    #    v = IntPoint(x, y)
-        v = IntPoint(61,19)
-    end
 
+
+while true
+    v = Point(0, 0)
+    while point_in_temple(temple, Point(v.x, v.y)) || is_within_distance_of_boundary(Point(v.x,v.y))==false
+        #x = rand(11:99)
+        #y = rand(11:99)
+        x=17
+        y=17
+        v=Point(x/10,y/10)
+    end
+    sleep(1)
+    global najval
+    global best
+    najval=0
     println("Searching from $v")
-    searchFrom(v, 0)
+    searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
+    println("najbolje do sad:")
+    println(best)
 end
 
 
