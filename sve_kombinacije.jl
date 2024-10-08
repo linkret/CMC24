@@ -60,7 +60,7 @@ function potencijalne_susjede_tocke(v::Point)::Vector{RazmatraniKutevi}
         return RazmatraniKutevi[]
     end
 
-    step = 0.005
+    step = 0.01
     razmatraniKutevi=RazmatraniKutevi[]
 
     for e in 0.0:step:359.99999
@@ -224,19 +224,18 @@ najval=0
 best=0
 
 function searchFrom(v::IntPoint, depth::Int,
+    solution::Matrix{Float64} = Matrix{Float64}(undef, 0, 3),
     banned_angle::Float64 = -1.0,
     banned_angle_range::Float64 = 0.1 )
-    global najval
+    global najval, best
     if depth==9
-        
         if fast_score()>najval
-            najval=fast_score()
+            najval=evaluate_solution(solution)
             println(najval)
 
-            global best
-            if best<najval
-                best=najval
+            if best < najval # TODO: we no longer need this If
                 draw_pixels_png()
+                best = max(best, najval)
             end
         end
 
@@ -245,16 +244,6 @@ function searchFrom(v::IntPoint, depth::Int,
 
     moji_susedi = susedi[v.x,v.y]
     should_break = false
-    
-    # moji_susedi=IntPoint[]
-    # if depth >= 3
-    #     moji_susedi = susedi[v.x,v.y]
-    # else
-    #     moji_susedi = susedi[v.x,v.y]
-    #     moji_susedi = shuffle(moji_susedi)
-    #     should_break = true
-    # end
-    moji_susedi = susedi[v.x,v.y]
     
     # moji_susedi=IntPoint[]
     # if depth >= 3
@@ -276,9 +265,26 @@ function searchFrom(v::IntPoint, depth::Int,
                 continue
             end
         end
+
+        # Place the mirror
+        if depth == 0
+            solution = vcat(solution, [v.x/10 v.y/10 b])
+        else
+            angle_between_rays = banned_angle + pi - b
+            mirror_angle = b + angle_between_rays / 2
+            mirror_angle = mirror_angle % 2π
+
+            lp, lsuccess = place_mirror(Point(v.x/10, v.y/10), mirror_angle, Ray[], solution)
+            if !lsuccess
+                continue
+            end
+            solution = vcat(solution, [lp.x lp.y mirror_angle])
+        end
+
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) )
-        searchFrom(z, depth+1, a)
+        searchFrom(z, depth+1, solution, a)
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) , -1 )
+        solution = solution[1:end-1, :]
     end
 end
 
@@ -362,6 +368,65 @@ function load_susedi_from_json(filename::String)::Array{Vector{IntPoint}}
     return susedi
 end
 
+function place_mirror(v::Point, e::Float64, rays::Array{Ray}, mirrors::Matrix{Float64})::Tuple{Point, Bool}
+    p1 = Point(v[1] - cos(e) * 0.5, v[2] - sin(e) * 0.5) # leftmost possible point
+    p2 = Point(v[1] + cos(e) * 0.5, v[2] + sin(e) * 0.5) # rightmost possible point
+
+    tp1 = [floor(p1[1]), floor(p1[2])]
+    tp2 = [floor(p2[1]), floor(p2[2])]
+    
+    blocks = Vector{Block}(undef, 0) # will have max 4 interesting blocks for our mirror
+    
+    for x in min(tp1[1],tp2[1]):max(tp1[1],tp2[1])
+        for y in min(tp1[2],tp2[2]):max(tp1[2],tp2[2])
+            block = block_from_point(temple, Point(x, y))
+            if isnothing(block)
+                continue
+            end
+            push!(blocks, block)
+        end
+    end
+
+    if tp1 == tp2 && length(blocks) == 1
+        return (Point(0., 0.), false) # cannot place mirror anywhere, only one full block
+    end
+
+    for shift in -0.01:-0.05:-0.499 # try translating until we avoid all blocks
+        p = Point(v[1] + cos(e) * shift, v[2] + sin(e) * shift)
+        valid = true
+        for block in blocks
+            if segment_block_intersection(Segment(p, mirror_length, e), block)
+                valid = false
+                break
+            end
+        end
+        if !valid
+            continue
+        end
+        for ray in rays[1:end-2] # end-2 because we surely intersect with the last two rays - our mirror must touch them
+            r = ray_segment_intersection(ray, Segment(p, mirror_length, e))
+            if r[1] != 1
+                valid = false
+                break
+            end
+        end
+        if !valid
+            continue
+        end
+        for mirror in drop(eachrow(mirrors), 1) # first one is the lamp
+            if segment_segment_intersection(Segment(p, mirror_length, e), Segment(Point(mirror[1], mirror[2]), mirror_length, mirror[3]))
+                valid = false
+                break
+            end
+        end
+        if valid
+            return (p, true)
+        end
+    end
+
+    return (Point(0., 0.), false) # couldn't place mirror anywhere
+end
+
 const susedi = begin
     sus_filename = "susedi.json"
     if isfile(sus_filename)
@@ -387,22 +452,18 @@ const susedi = begin
     end
 end
 
-
 reset()
 draw_temple(temple)
-
-
 
 while true
     v = Point(0, 0)
     while point_in_temple(temple, Point(v.x, v.y)) || is_within_distance_of_boundary(Point(v.x,v.y))==false
-        #x = rand(11:99)
-        #y = rand(11:99)
-        x=17
-        y=17
+        x = rand(11:99)
+        y = rand(11:99)
+        x = 17
+        y = 17
         v=Point(x/10,y/10)
     end
-    sleep(1)
     global najval
     global best
     najval=0
