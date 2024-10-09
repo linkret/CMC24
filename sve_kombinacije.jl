@@ -238,7 +238,11 @@ function searchFrom(v::IntPoint, depth::Int,
                 best = max(best, najval)
             end
         end
+        return
+    end
 
+    hopeful_score = fast_score() + (9 - depth) * 11.0
+    if hopeful_score <= best
         return
     end
 
@@ -258,9 +262,6 @@ function searchFrom(v::IntPoint, depth::Int,
         a=kut_izmedu_tocki(v,z)+π
         b=a-π
         if banned_angle != -1.0
-            if abs(a - banned_angle) < banned_angle_range || abs(a - banned_angle + 2π) < banned_angle_range || abs(a - banned_angle - 2π) < banned_angle_range
-                continue
-            end
             if abs(b - banned_angle) < banned_angle_range || abs(b - banned_angle + 2π) < banned_angle_range || abs(b - banned_angle - 2π) < banned_angle_range
                 continue
             end
@@ -467,13 +468,36 @@ while true
     global najval
     global best
     najval=0
-    println("Searching from $v")
     searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
     println("najbolje do sad:")
     println(best)
 end
 
-
-
+"""
+for x in 11:99
+    for y in 11:99
+        v=Point(x/10,y/10)
+        if !is_within_distance_of_boundary(v)
+            continue
+        end
+        if point_in_temple(temple, Point(v.x, v.y))
+            continue
+        end
+        if ( point_in_temple(temple, Point(v.x+0.11, v.y)) || 
+            point_in_temple(temple, Point(v.x, v.y+0.11)) ||
+            point_in_temple(temple, Point(v.x-0.11, v.y)) ||
+            point_in_temple(temple, Point(v.x, v.y-0.11)) )
+            sleep(1)
+            global najval
+            global best
+            najval=0
+            println("Searching from $v")
+            searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
+            println("najbolje do sad:")
+            println(best)
+        end
+    end
+end
+"""
 
 
