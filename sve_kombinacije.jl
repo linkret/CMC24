@@ -474,6 +474,9 @@ while true
 end
 
 """
+#ima bug da ne pretrazi neke koje nisu skroz na rubu iz nekog razloga
+#hm hm 
+
 for x in 11:99
     for y in 11:99
         v=Point(x/10,y/10)
