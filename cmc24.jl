@@ -460,8 +460,8 @@ end
 
 function segment_block_intersection(segment::Segment, block::Block)::Bool
     return any((
-        #point_in_block(segment[1], block),
-        #point_in_block(segment[1] + segment[2] * [cos(segment[3]), sin(segment[3])], block),
+        # point_in_block(segment.point, block),
+        # point_in_block(segment.point + segment.length * Point(cos(segment.angle), sin(segment.angle)), block),
         segment_segment_intersection(segment, block.s1),
         segment_segment_intersection(segment, block.s2),
         segment_segment_intersection(segment, block.s3),

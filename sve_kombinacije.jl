@@ -1,15 +1,14 @@
-# using Random
 using Base.Iterators: drop
-using Pkg
 using Random
 using JSON
+using DataStructures: SortedDict
 
 include("cmc24.jl")
 include("fast_eval.jl")
 
 const PULL_OUT_SMALL = 0.1
 const PULL_OUT_BIG = 2.0
-const udaljenost_od_ruba=2.1
+const udaljenost_od_ruba = 2.1
 
 struct RazmatraniKutevi
     distance::Float64
@@ -25,13 +24,13 @@ end
 function kut_izmedu_tocki(p1::Point,p2::Point)::Float64
     dy=p2.y-p1.y
     dx=p2.x-p1.x
-    return atan(dy,dx)# *(180 / π)  # convert from radians to degrees
+    return atan(dy,dx)
 end
 
 function kut_izmedu_tocki(p1::IntPoint,p2::IntPoint)::Float64
     dy=p2.y-p1.y
     dx=p2.x-p1.x
-    return atan(dy,dx)# *(180 / π)  # convert from radians to degrees
+    return atan(dy,dx)
 end
 
 function is_within_distance_of_boundary(point::Point, distance::Float64 = udaljenost_od_ruba)
@@ -220,39 +219,32 @@ function stvori_susjede(privremeni_susedi::Array{Vector{IntPoint}, 2})
     end
 end
 
-najval=0
-best=0
+const najval = Ref{Float64}(0.)
+const best = Ref{Float64}(0.)
+const naj_solution = Ref{Matrix{Float64}}(Matrix{Float64}(undef, 0, 3))
 
 function searchFrom(v::IntPoint, depth::Int,
     solution::Matrix{Float64} = Matrix{Float64}(undef, 0, 3),
     banned_angle::Float64 = -1.0,
     banned_angle_range::Float64 = 0.1 )
-    global najval, best
-    if depth==9
-        if fast_score()>najval
-            najval=evaluate_solution(solution)
-            println(najval)
+    global najval, best, naj_solution
 
-            if best < najval # TODO: we no longer need this If
-                draw_pixels_png()
-                best = max(best, najval)
-            end
+    if depth==9
+        if fast_score() > najval[]
+            naj_solution[] = copy(solution)
+            najval[] = fast_score()
+            best[] = max(best[], najval[])
         end
 
         return
     end
 
+    optimistic_score = fast_score() + (9 - depth) * 12
+    if optimistic_score < najval[]
+        return
+    end
+
     moji_susedi = susedi[v.x,v.y]
-    should_break = false
-    
-    # moji_susedi=IntPoint[]
-    # if depth >= 3
-    #     moji_susedi = susedi[v.x,v.y]
-    # else
-    #     moji_susedi = susedi[v.x,v.y]
-    #     moji_susedi = shuffle(moji_susedi)
-    #     should_break = true
-    # end
     
     for z in moji_susedi
         a=kut_izmedu_tocki(v,z)+π
@@ -281,8 +273,71 @@ function searchFrom(v::IntPoint, depth::Int,
             solution = vcat(solution, [lp.x lp.y mirror_angle])
         end
 
+        if !verify_solution(solution)
+            solution = solution[1:end-1, :]
+            continue
+        end
+
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) )
         searchFrom(z, depth+1, solution, a)
+        draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) , -1 )
+        solution = solution[1:end-1, :]
+    end
+end
+
+const max_solution_cnt = 100
+
+function add_solution!(solutions::SortedDict{Float64, Matrix{Float64}}, score::Float64, solution::Matrix{Float64})
+    solutions[score] = copy(solution)
+    if length(solutions) > max_solution_cnt
+        delete!(solutions, first(solutions).first)
+    end
+end
+
+function searchFromHalf(v::IntPoint, depth::Int, sorted_solutions::SortedDict{Float64, Matrix{Float64}},
+    solution::Matrix{Float64} = zeros(Float64, 1, 3),
+    banned_angle::Float64 = -1.0,
+    banned_angle_range::Float64 = 0.1 )
+
+    if depth==4
+        my_solution = vcat(solution, [v.x/10 v.y/10 banned_angle])
+        #if verify_solution(my_solution, true)
+        add_solution!(sorted_solutions, fast_score(), my_solution)
+        #end
+        return
+    end
+    
+    for z in susedi[v.x, v.y]
+        a=kut_izmedu_tocki(v,z)+π
+        b=a-π
+        if banned_angle != -1.0
+            if abs(a - banned_angle) < banned_angle_range || abs(a - banned_angle + 2π) < banned_angle_range || abs(a - banned_angle - 2π) < banned_angle_range
+                continue
+            end
+            if abs(b - banned_angle) < banned_angle_range || abs(b - banned_angle + 2π) < banned_angle_range || abs(b - banned_angle - 2π) < banned_angle_range
+                continue
+            end
+        end
+
+        # Place the mirror
+        angle_between_rays = banned_angle + pi - b
+        mirror_angle = b + angle_between_rays / 2
+        mirror_angle = mirror_angle % 2π
+
+        lp, lsuccess = place_mirror(Point(v.x/10, v.y/10), mirror_angle, Ray[], solution)
+        if !lsuccess
+            continue
+        end
+
+        solution = vcat(solution, [lp.x lp.y mirror_angle])
+
+        if !verify_solution(solution)
+            solution = solution[1:end-1, :]
+            continue
+        end
+
+        draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) )
+        searchFromHalf(z, depth+1, sorted_solutions, solution, a)
         draw_ray(Point(v.x/10,v.y/10), Point(z.x/10,z.y/10) , -1 )
         solution = solution[1:end-1, :]
     end
@@ -368,6 +423,16 @@ function load_susedi_from_json(filename::String)::Array{Vector{IntPoint}}
     return susedi
 end
 
+# const precompute shifts for place_mirror
+
+const start_shift = 0.00
+const step_shift = -0.05
+const end_shift = -0.50
+
+const shifts = collect(start_shift:step_shift:end_shift)
+const middle_shift = shifts[Int(ceil(length(shifts) / 2))]
+const sorted_shifts = sort(shifts, by = x -> abs(x - middle_shift))
+
 function place_mirror(v::Point, e::Float64, rays::Array{Ray}, mirrors::Matrix{Float64})::Tuple{Point, Bool}
     p1 = Point(v[1] - cos(e) * 0.5, v[2] - sin(e) * 0.5) # leftmost possible point
     p2 = Point(v[1] + cos(e) * 0.5, v[2] + sin(e) * 0.5) # rightmost possible point
@@ -391,7 +456,7 @@ function place_mirror(v::Point, e::Float64, rays::Array{Ray}, mirrors::Matrix{Fl
         return (Point(0., 0.), false) # cannot place mirror anywhere, only one full block
     end
 
-    for shift in -0.01:-0.05:-0.499 # try translating until we avoid all blocks
+    for shift in sorted_shifts # try translating until we avoid all blocks
         p = Point(v[1] + cos(e) * shift, v[2] + sin(e) * shift)
         valid = true
         for block in blocks
@@ -452,25 +517,231 @@ const susedi = begin
     end
 end
 
+function get_mim_base()::Tuple{IntPoint, IntPoint, Float64}
+    while true
+        start1 = IntPoint(rand(11:99), rand(11:99))
+
+        if point_in_temple(temple, Point(start1.x/10, start1.y/10))
+            continue
+        end
+
+        if susedi[start1.x, start1.y] == IntPoint[]
+            continue
+        end
+
+        start2 = rand(susedi[start1.x, start1.y])
+
+        kut = kut_izmedu_tocki(start1, start2)
+
+        have_options = false
+        for sused in susedi[start1.x, start1.y]
+            kut_sused = kut_izmedu_tocki(start1, sused)
+            if abs(kut - kut_sused) > 0.1 # banned_angle_range
+                have_options = true
+                break
+            end
+        end
+
+        if !have_options
+            continue
+        end
+
+        for sused in susedi[start2.x, start2.y]
+            kut_sused = kut_izmedu_tocki(start2, sused)
+            if abs(kut + pi - kut_sused) > 0.1 # banned_angle_range
+                return start1, start2, kut
+            end
+        end
+    end
+end
+
+function verify_solution(solution::Matrix{Float64}, start_from_last::Bool = false)::Bool
+    hit_mirrors = Set{Int}()
+    hit_mirror = 0
+
+    ray = Ray(Point(solution[1, 1], solution[1, 2]), Direction(cos(solution[1, 3]), sin(solution[1, 3])))
+
+    itercnt = 0
+    while itercnt < 20
+        # check if ray can hit some mirror
+        t_mirror = ∞
+        for (m, mirror) ∈ enumerate(eachrow(solution[2:end, :]))
+            (case, t, u) = ray_segment_intersection(ray, Segment(Point(mirror[1], mirror[2]), mirror_length, mirror[3]))
+            if ((case == 2) || (case == 3)) && (t < t_mirror) && (t > ε)
+                t_mirror = t
+                push!(hit_mirrors, m + 1)
+                hit_mirror = m + 1
+            end
+        end
+
+        # check where ray would hit the temple
+        t_temple = temple_ray_intersection(temple, ray)
+
+        # closest hit point
+        t = min(t_mirror, t_temple)
+        hitting_point = ray.point + t * ray.direction
+
+        # ray hit a mirror, calculate new direction
+        if t_mirror < t_temple
+            mirror_direction = Direction(cos(solution[hit_mirror, 3]), sin(solution[hit_mirror, 3]))
+            normal = Direction(-mirror_direction[2], mirror_direction[1])
+
+            ray = Ray(
+                hitting_point,
+                ray.direction - 2 * (ray.direction ⋅ normal) * normal
+            )
+
+            itercnt += 1
+            continue
+        end
+
+        # ray hit the temple
+        break
+    end
+
+    if itercnt >= 20
+        return false
+    end
+
+    return length(hit_mirrors) >= size(solution, 1) - 1
+end
+
+function draw_rays(solution::Matrix{Float64}, color::Int, matrix::Matrix{UInt8})
+    for (i, m1) in enumerate(eachrow(solution)[2:end-1])
+        m2 = solution[i+2, :]
+        draw_ray(Point(m1[1], m1[2]), Point(m2[1], m2[2]), color, i+2 == size(solution, 1), matrix)
+    end
+end
+
+function meet_in_the_middle()
+    global najval, naj_solution, best
+    reset()
+
+    left_solutions_dict = SortedDict{Float64, Matrix{Float64}}()
+    right_solutions_dict = SortedDict{Float64, Matrix{Float64}}()
+
+    start1, start2, start_alfa = get_mim_base()
+
+    draw_ray(Point(start1.x/10, start1.y/10), Point(start2.x/10, start2.y/10))
+
+    searchFromHalf(start1, 0, left_solutions_dict, [start2.x/10 start2.y/10 start_alfa + π], start_alfa)
+    searchFromHalf(start2, 0, right_solutions_dict, [start1.x/10 start1.y/10 start_alfa], start_alfa + π)
+    
+    if isempty(left_solutions_dict) || isempty(right_solutions_dict)
+        println("No solution found")
+        return
+    end
+
+    println("Left solutions len: ", length(left_solutions_dict))
+    println("Right solutions len: ", length(right_solutions_dict))
+
+    best_solution = last(left_solutions_dict).second
+    draw_rays(best_solution, 1, pixels)
+    best_solution = best_solution[end:-1:2, :]
+    najval[] = 0
+    searchFrom(start2, 5, best_solution, start_alfa + π)
+    if najval[] == 0 # try the other starting point, why not
+        reset()
+        best_solution = last(right_solutions_dict).second
+        draw_rays(best_solution, 1, pixels)
+        best_solution = best_solution[end:-1:2, :]
+        searchFrom(start1, 5, best_solution, start_alfa)
+    end
+    best_solution = naj_solution[]
+    best_score = najval[]
+
+    reset()
+    draw_ray(Point(start1.x/10, start1.y/10), Point(start2.x/10, start2.y/10))
+
+    println("Starting score: ", best_score)
+
+    left_solutions = reverse(collect(values(left_solutions_dict))) # reverse to start from best solutions
+    right_solutions = reverse(collect(values(right_solutions_dict)))
+
+    left_matrices = [copy(pixels) for i in left_solutions]
+    right_matrices = [copy(pixels) for i in right_solutions]
+
+    for (idx, left_solution) in enumerate(left_solutions)
+        draw_rays(left_solution, 1, left_matrices[idx])
+    end
+
+    for (idx, right_solution) in enumerate(right_solutions)
+        draw_rays(right_solution, 1, right_matrices[idx])
+    end
+
+    for (lidx, left_solution) in enumerate(left_solutions)
+        left_matrix = left_matrices[lidx]
+        
+        for (ridx, right_solution) in enumerate(right_solutions)
+            right_matrix = right_matrices[ridx]
+
+            mirrors_intersection = false
+            for left_mirror in eachrow(left_solution[2:end-1, :])
+                for right_mirror in eachrow(right_solution[2:end-1, :])
+                    if segment_segment_intersection(
+                        Segment(Point(left_mirror[1], left_mirror[2]), mirror_length, left_mirror[3]),
+                        Segment(Point(right_mirror[1], right_mirror[2]), mirror_length, right_mirror[3]))
+                        mirrors_intersection = true
+                        break
+                    end
+                end
+            end
+
+            if mirrors_intersection
+                continue
+            end
+
+            solution = vcat(left_solution[2:end-1, :], right_solution[2:end, :]) # TODO: funky
+            solution = solution[end:-1:1, :] # reverse rows
+
+            if !verify_solution(solution)
+                continue
+            end
+
+            score = slow_score(left_matrix, right_matrix)
+            if score > best_score
+                best_score = score
+                best_solution = solution
+                println("New best score: ", best_score)
+            end
+        end
+    end
+
+    println("Best solution: ")
+    println(best_score)
+    for m in eachrow(best_solution)
+        println("$(m[1]) $(m[2]) $(m[3])")
+    end
+
+    return evaluate_solution(best_solution)
+end
+
 reset()
 draw_temple(temple)
+
+while false
+    tinfo = @timed begin
+        meet_in_the_middle()
+    end
+    println("Time to meet in the middle: ", tinfo.time, " s")
+end
 
 while true
     v = Point(0, 0)
     while point_in_temple(temple, Point(v.x, v.y)) || is_within_distance_of_boundary(Point(v.x,v.y))==false
         x = rand(11:99)
         y = rand(11:99)
-        x = 17
-        y = 17
-        v=Point(x/10,y/10)
+        # x = 17
+        # y = 17
+        v=Point(x/10, y/10)
     end
-    global najval
-    global best
-    najval=0
+    global najval, best
+    najval[] = 0
     println("Searching from $v")
     searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
-    println("najbolje do sad:")
-    println(best)
+    evaluate_solution(naj_solution[])
+    println("najbolje do sad: ", best[])
+    break
 end
 
 
