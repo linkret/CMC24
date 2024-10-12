@@ -233,7 +233,10 @@ function searchFrom(v::IntPoint, depth::Int,
         if fast_score() > najval[]
             naj_solution[] = copy(solution)
             najval[] = fast_score()
-            best[] = max(best[], najval[])
+            if najval[] > best[]
+                best[] = najval[]
+                draw_pixels_png()
+            end
         end
 
         return
@@ -713,6 +716,8 @@ function meet_in_the_middle()
     return evaluate_solution(best_solution)
 end
 
+# Random.seed!(1234)
+
 reset()
 draw_temple(temple)
 
@@ -732,14 +737,16 @@ while true
         # y = 17
         v=Point(x/10, y/10)
     end
-    global najval
-    global best
+    global najval, best, naj_solution
     najval[]=0
     println("Searching from $v")
-    searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
+    tinfo = @timed begin
+        searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
+    end
+    println("Time to search: ", tinfo.time, " s")
     evaluate_solution(naj_solution[])
-    println("najbolje do sad: ", best[])
-    break
+    println("Najbolje do sad: ", best[])
+    sleep(1) # ovo nije ni losa brijica, da ga stignem ubit ak zelim slikicu
 end
 
 """
@@ -760,16 +767,15 @@ for x in 11:99
             point_in_temple(temple, Point(v.x-0.11, v.y)) ||
             point_in_temple(temple, Point(v.x, v.y-0.11)) )
             sleep(1)
-            global najval
-            global best
-            najval=0
+            global najval, best, naj_solution
+            najval[]=0
             println("Searching from $v")
             searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
             println("najbolje do sad:")
-            println(best)
+            println(best[])
+            evaluate_solution(naj_solution[])
         end
     end
 end
 """
-
 
