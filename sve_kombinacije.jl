@@ -301,9 +301,7 @@ function searchFromHalf(v::IntPoint, depth::Int, sorted_solutions::SortedDict{Fl
 
     if depth==4
         my_solution = vcat(solution, [v.x/10 v.y/10 banned_angle])
-        #if verify_solution(my_solution, true)
         add_solution!(sorted_solutions, fast_score(), my_solution)
-        #end
         return
     end
     
@@ -555,12 +553,17 @@ function get_mim_base()::Tuple{IntPoint, IntPoint, Float64}
     end
 end
 
-function verify_solution(solution::Matrix{Float64}, start_from_last::Bool = false)::Bool
+function trace_solution(solution::Matrix{Float64})::Tuple{Vector{Ray}, Vector{Int}}
     hit_mirrors = Set{Int}()
     hit_mirror = 0
-
+    
     ray = Ray(Point(solution[1, 1], solution[1, 2]), Direction(cos(solution[1, 3]), sin(solution[1, 3])))
+    rays = Ray[ray]
 
+    if point_in_temple(temple, ray.point)
+        return rays, Int64[]
+    end
+    
     itercnt = 0
     while itercnt < 20
         # check if ray can hit some mirror
@@ -592,17 +595,26 @@ function verify_solution(solution::Matrix{Float64}, start_from_last::Bool = fals
             )
 
             itercnt += 1
+            push!(rays, ray)
             continue
         end
 
         # ray hit the temple
+
+        push!(rays, Ray(hitting_point, Direction()))
+
         break
     end
 
     if itercnt >= 20
-        return false
+        return rays, Int64[]
     end
 
+    return rays, collect(hit_mirrors)
+end
+
+function verify_solution(solution::Matrix{Float64})::Bool
+    hit_mirrors = trace_solution(solution)[2]
     return length(hit_mirrors) >= size(solution, 1) - 1
 end
 
@@ -629,7 +641,7 @@ function meet_in_the_middle()
     
     if isempty(left_solutions_dict) || isempty(right_solutions_dict)
         println("No solution found")
-        return
+        return 0.0, Matrix{Float64}(undef, 0, 3)
     end
 
     println("Left solutions len: ", length(left_solutions_dict))
@@ -691,7 +703,7 @@ function meet_in_the_middle()
                 continue
             end
 
-            solution = vcat(left_solution[2:end-1, :], right_solution[2:end, :]) # TODO: funky
+            solution = vcat(left_solution[end-1:-1:2, :], right_solution[2:end, :])
             solution = solution[end:-1:1, :] # reverse rows
 
             if !verify_solution(solution)
@@ -713,13 +725,37 @@ function meet_in_the_middle()
         println("$(m[1]) $(m[2]) $(m[3])")
     end
 
-    return evaluate_solution(best_solution)
+    return evaluate_solution(best_solution), best_solution
 end
 
 # Random.seed!(1234)
 
 reset()
 draw_temple(temple)
+
+# const bio = zeros(UInt8, 200, 200)
+# function flood_fill(p::IntPoint)
+#     global bio
+#     bio[p.x, p.y] = 1
+#     for sused in susedi[p.x, p.y]
+#         if bio[sused.x, sused.y] == 0
+#             flood_fill(sused)
+#         end
+#     end
+# end
+
+# components = 0
+# for x in 11:99
+#     for y in 11:99
+#         if bio[x, y] == 0 && susedi[x, y] != IntPoint[]
+#             global components
+#             flood_fill(IntPoint(x, y))
+#             components += 1
+#         end
+#     end
+# end
+
+# println("Components: ", components)
 
 while false
     tinfo = @timed begin
@@ -728,7 +764,7 @@ while false
     println("Time to meet in the middle: ", tinfo.time, " s")
 end
 
-while true
+while false
     v = Point(0, 0)
     while point_in_temple(temple, Point(v.x, v.y)) || is_within_distance_of_boundary(Point(v.x,v.y))==false
         x = rand(11:99)
@@ -749,33 +785,32 @@ while true
     sleep(1) # ovo nije ni losa brijica, da ga stignem ubit ak zelim slikicu
 end
 
-"""
-#ima bug da ne pretrazi neke koje nisu skroz na rubu iz nekog razloga
-#hm hm 
 
-for x in 11:99
-    for y in 11:99
-        v=Point(x/10,y/10)
-        if !is_within_distance_of_boundary(v)
-            continue
-        end
-        if point_in_temple(temple, Point(v.x, v.y))
-            continue
-        end
-        if ( point_in_temple(temple, Point(v.x+0.11, v.y)) || 
-            point_in_temple(temple, Point(v.x, v.y+0.11)) ||
-            point_in_temple(temple, Point(v.x-0.11, v.y)) ||
-            point_in_temple(temple, Point(v.x, v.y-0.11)) )
-            sleep(1)
-            global najval, best, naj_solution
-            najval[]=0
-            println("Searching from $v")
-            searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
-            println("najbolje do sad:")
-            println(best[])
-            evaluate_solution(naj_solution[])
-        end
-    end
-end
-"""
+# #ima bug da ne pretrazi neke koje nisu skroz na rubu iz nekog razloga
+# #hm hm 
+
+# for x in 11:99
+#     for y in 11:99
+#         v=Point(x/10,y/10)
+#         if !is_within_distance_of_boundary(v)
+#             continue
+#         end
+#         if point_in_temple(temple, Point(v.x, v.y))
+#             continue
+#         end
+#         if ( point_in_temple(temple, Point(v.x+0.11, v.y)) || 
+#             point_in_temple(temple, Point(v.x, v.y+0.11)) ||
+#             point_in_temple(temple, Point(v.x-0.11, v.y)) ||
+#             point_in_temple(temple, Point(v.x, v.y-0.11)) )
+#             sleep(1)
+#             global najval, best, naj_solution
+#             najval[]=0
+#             println("Searching from $v")
+#             searchFrom(IntPoint(round( Int, v.x*10 ),round( Int, v.y*10 )), 0)
+#             println("najbolje do sad:")
+#             println(best[])
+#             evaluate_solution(naj_solution[])
+#         end
+#     end
+# end
 

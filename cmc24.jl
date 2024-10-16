@@ -1,5 +1,5 @@
 # Computational Modeling Challenge 2024
-# CMC24 solution evaluation script
+# CMC24 solution evaluation script (enhanced and edited by us)
 # Author: Hrvoje Abraham, hrvoje.abraham@avl.com
 
 using FileIO
@@ -655,19 +655,21 @@ function cmc24_plot(
     lamp::Union{Lamp, Nothing}=nothing, 
     mirrors::Union{Vector{Mirror}, Nothing}=nothing, 
     path::Union{Path, Nothing}=nothing, 
-    downscale_factor::Float64=1.0
-)::String
+    save_to_disk::Bool=false
+)#::String
+    downscale_factor = 1.0
     plot_scale = 150 / downscale_factor # to speed up solution evaluation
     plot_size = plot_scale .* temple.shape 
     
     solution_hash = hex12(consistent_hash([temple, lamp, mirrors, path]))
     filename = "cmc24_solution_" * solution_hash * ".png"
 
-    if isfile(filename)
-        return filename # It's already plotted
-    end
+    # TODO: make this work again
+    # if isfile(filename)
+    #    return filename # It's already plotted
+    # end
 
-    plot(
+    plt = Plots.plot(
         size = plot_size,
         xlims = (0, temple.size[1]),
         ylims = (0, temple.size[2]),
@@ -692,7 +694,7 @@ function cmc24_plot(
     if path ≠ nothing
         # circle parts of the lightened area
         for p ∈ path.points
-            plot!(
+            Plots.plot!(
                 circleShape(p[1], p[2], light_halfwidth, 1000),
                 color = RGBA(1, 0.7, 0.6, 1),
                 linecolor = RGBA(0, 0, 0, 0),
@@ -707,7 +709,7 @@ function cmc24_plot(
             xs = [p1.x - n.x, p2.x - n.x, p2.x + n.x, p1.x + n.x]
             ys = [p1.y - n.y, p2.y - n.y, p2.y + n.y, p1.y + n.y]
             
-            plot!(
+            Plots.plot!(
                 Shape(xs, ys),
                 color = RGBA(1, 0.7, 0.6, 1),
                 linecolor = RGBA(0, 0, 0, 0),
@@ -726,7 +728,7 @@ function cmc24_plot(
             xs = [p1.x - n.x, p2.x - n.x, p2.x + n.x, p1.x + n.x]
             ys = [p1.y - n.y, p2.y - n.y, p2.y + n.y, p1.y + n.y]
 
-            plot!(
+            Plots.plot!(
                 Shape(xs, ys),
                 color = RGBA(0, 0, 1, 1),
                 linecolor = RGBA(0, 0, 0, 0),
@@ -737,7 +739,7 @@ function cmc24_plot(
 
     # plot the ray
     if path ≠ nothing
-        plot!(
+        Plots.plot!(
             first.(path.points),
             last.(path.points),
             linecolor = RGBA(1, 0, 0, 1),
@@ -747,7 +749,7 @@ function cmc24_plot(
 
     # plot the lamp
     if lamp ≠ nothing
-        plot!(
+        Plots.plot!(
             circleShape(lamp.v[1], lamp.v[2], 0.2, 6),
             color = RGBA(0.9, 0, 1, 1),
             linecolor = RGBA(1, 1, 1, 1),
@@ -758,7 +760,7 @@ function cmc24_plot(
     # plot the building blocks
     for block ∈ temple.blocks
         p = block.v1
-        plot!(
+        Plots.plot!(
             Shape(
                 p.x .+ [0, block_size, block_size, 0],
                 p.y .+ [0, 0, block_size, block_size]),
@@ -767,35 +769,39 @@ function cmc24_plot(
             linewidth = 0,
         )
     end
+
+    io_buff = IOBuffer()
+    png(plt, io_buff)
+    seekstart(io_buff)  
+    img = FileIO.load(File{format"PNG"}(io_buff))
     
-    savefig(filename)
-    
-    return filename
+    if save_to_disk
+        FileIO.save(filename, img) # TODO: fix
+    end
+
+    return img
 end
 
 function evaluate(temple::Temple, path::Path)::Tuple{Int64, Int64, Int64}
     global fplot1, img1
-    #fplot1 = cmc24_plot(temple)
-    #tinfo = @timed begin
-    fplot2 = cmc24_plot(temple, path=path)
-    #end
-    #println("Time to plot the path: ", tinfo.time, " s")
+
+    # fplot2 = cmc24_plot(temple, path=path)
     
-    # img1 = FileIO.load(fplot1)
-    img2 = FileIO.load(fplot2) # slow
+    # img2 = FileIO.load(fplot2) # slow
+    img2 = cmc24_plot(temple, path=path)
 
     # count the total number of the plot pixels
     total = length(img1)
 
     # count the number of vacant pixels recognized by being bright
-    vacant = sum(p.r > 0.7 for p ∈ img1) # can precompute, but its not that slow
+    vacant = sum(red(p) > 0.7 for p ∈ img1) # can precompute, but its not that slow
 
     # count the number of pixels changed due to the light ray
     score = sum(p1 ≠ p2 for (p1, p2) ∈ zip(img1, img2))
 
     # delete image files
     # rm(fplot1)
-    rm(fplot2)
+    # rm(fplot2)
     
     return total, vacant, score
 end
@@ -860,9 +866,9 @@ function evaluate_solution(cmc24_solution::Matrix{Float64})::Float64
         end
         
         best_score[1] = score_percent
-        cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path)
+        cmc24_plot(temple, lamp=lamp, mirrors=mirrors, path=path, save_to_disk=true)
     end
-
+    
     return score_percent
 end
 
@@ -870,11 +876,6 @@ const best_solution = load_solution_file("best.txt")
 const best_score = [best_solution[1]] # array to be mutable
 const temple = load_temple(temple_string, block_size)
 
-# TODO: this precompute can be moved to the point of first-use - there are rare cases we don't need it at all
-const fplot1 = cmc24_plot(temple) # precompute the static base plot
-const img1 = FileIO.load(fplot1) # preload the static base image
-
-# println("Current best solution: ")
-# evaluate_solution(test_solution)
-
-# rm(fplot1) # delete the static base plot # we usually perform this cleanup in main.jl
+# const fplot1 = cmc24_plot(temple) # precompute the static base plot
+# const img1 = FileIO.load(fplot1) # preload the static base image
+const img1 = cmc24_plot(temple) # preload the static base image
